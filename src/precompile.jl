@@ -31,3 +31,5 @@ using PrecompileTools
         lin1()
     end
 end
+
+"hallo2"
