@@ -50,7 +50,8 @@ mutable struct System{Tv, Tc, Ti, Tm, TSpecMat <: AbstractMatrix, TSolArray <: A
     """
     Jacobi matrix for nonlinear problem
     """
-    matrix::Union{ExtendableSparseMatrix{Tv, Tm},
+    matrix::Union{ExtendableSparseParallel.ExtendableSparseMatrixParallel{Tv, Tm}, 
+    			  ExtendableSparseMatrix{Tv, Tm},
                   Tridiagonal{Tv, Vector{Tv}},
                   #                  MultidiagonalMatrix,
                   BandedMatrix{Tv}}
@@ -282,6 +283,65 @@ function System(grid::ExtendableGrid;
     system.is_linear = is_linear
     physics!(system; kwargs...)
     enable_species!(system; species)
+    return system
+end
+
+
+
+function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
+                #valuetype = coord_type(grid),
+                #indextype = index_type(grid),
+                species = Int[],
+                assembly = :cellwise,
+                unknown_storage = :dense,
+                matrixindextype = Int64,
+                matrixtype = :sparse,
+                is_linear = false,
+                nparams = 0,
+                kwargs...)
+    #Tv = valuetype
+    #Tc = coord_type(grid)
+    #Ti = indextype
+    #Tm = matrixindextype
+
+	
+	if Symbol(unknown_storage) == :dense
+        system = System{Tv, Tc, Ti, Tm, Matrix{Ti}, Matrix{Tv}}()
+    elseif Symbol(unknown_storage) == :sparse
+        system = System{Tv, Tc, Ti, Tm, SparseMatrixCSC{Ti, Ti}, SparseSolutionArray{Tv, Ti}}()
+    else
+        throw("specify either unknown_storage=:dense  or unknown_storage=:sparse")
+    end
+    
+    grid, nnts, s, onr, cfp, gi, gc, ni, rni, starts = preparatory_multi_ps_less_reverse(nm, nt, depth, Tm)
+    
+    #system.matrix = ExtendableSparseParallel.ExtendableSparseMatrixParallel{Tv, Tm}(nm, nt, depth)
+
+    maxspec = 0
+    system.grid = grid
+    system.region_species = spzeros(Ti, Int16, maxspec, num_cellregions(system.grid))
+    system.bregion_species = spzeros(Ti, Int16, maxspec, num_bfaceregions(system.grid))
+    system.node_dof = spzeros(Ti, Tm, maxspec, num_nodes(system.grid))
+    system.boundary_values = zeros(Tv, maxspec, num_bfaceregions(system.grid))
+    system.boundary_factors = zeros(Tv, maxspec, num_bfaceregions(system.grid))
+    system.species_homogeneous = false
+    system.assembly_type = assembly
+    system.num_quantities = 0
+    system.uhash = 0x0
+    system.matrixtype = matrixtype
+    system.outflownoderegions = nothing
+    system.linear_cache = nothing
+    system.assembly_data = nothing
+    system.history = nothing
+    system.num_parameters = nparams
+    system.is_linear = is_linear
+    physics!(system; kwargs...)
+    enable_species!(system; species)
+    
+    csc = spzeros(Tv, Tm, num_nodes(grid), num_nodes(grid))
+	lnk = [SuperSparseMatrixLNK{Tv, Tm}(num_nodes(grid), nnts[tid]) for tid=1:nt]
+	system.matrix = ExtendableSparseMatrixParallel{Tv, Tm}(csc, lnk, grid, nnts, s, onr, cfp, gi, ni, rni, starts, nt, depth)
+    
     return system
 end
 
@@ -582,6 +642,88 @@ function _complete!(system::AbstractSystem{Tv, Tc, Ti, Tm}; create_newtonvectors
     else # :sparse
         system.matrix = ExtendableSparseMatrix{Tv, Tm}(n, n)
     end
+
+    if create_newtonvectors
+        system.residual = unknowns(system)
+        system.update = unknowns(system)
+    end
+    system.dudp = [unknowns(system) for i = 1:(system.num_parameters)]
+
+    update_grid!(system)
+    if has_generic_operator(system)
+        if has_generic_operator_sparsity(system)
+            system.generic_matrix = system.physics.generic_operator_sparsity(system)
+        else
+            generic_operator(f, u) = system.physics.generic_operator(f, u, system)
+            input = rand(num_dof(system))
+            output = similar(input)
+            tdetect = @elapsed begin
+                sparsity_pattern = Symbolics.jacobian_sparsity(generic_operator, output, input)
+                system.generic_matrix = Float64.(sparse(sparsity_pattern))
+            end
+            println("sparsity detection for generic operator: $(tdetect) s")
+            if nnz(system.generic_matrix) == 0
+                error("Sparsity detection failed: no pattern found")
+            end
+        end
+        tdetect = @elapsed begin
+            system.generic_matrix_colors = matrix_colors(system.generic_matrix)
+        end
+        println("matrix coloring for generic operator: $(tdetect) s")
+    end
+end
+
+
+function _complete_nomatrix!(system::AbstractSystem{Tv, Tc, Ti, Tm}; create_newtonvectors = true) where {Tv, Tc, Ti, Tm}
+    #if isdefined(system, :matrix)
+    #    return
+    #end
+
+    system.species_homogeneous = true
+    species_added = false
+    for inode = 1:size(system.node_dof, 2)
+        for ispec = 1:size(system.node_dof, 1)
+            if system.node_dof[ispec, inode] == ispec
+                species_added = true
+            else
+                system.species_homogeneous = false
+            end
+        end
+    end
+
+    if (!species_added)
+        error("No species enabled.\n Call enable_species(system,species_number, list_of_regions) at least once.")
+    end
+
+    nspec = size(system.node_dof, 1)
+    n = num_dof(system)
+	#=
+    matrixtype = system.matrixtype
+    #    matrixtype=:sparse
+    # Sparse even in 1D is not bad, 
+
+    if matrixtype == :default
+        if !isdensesystem(system)
+            matrixtype = :sparse
+        else
+            if nspec == 1
+                matrixtype = :tridiagonal
+            else
+                matrixtype = :banded
+            end
+        end
+    end
+
+    if matrixtype == :tridiagonal
+        system.matrix = Tridiagonal(zeros(Tv, n - 1), zeros(Tv, n), zeros(Tv, n - 1))
+    elseif matrixtype == :banded
+        system.matrix = BandedMatrix{Tv}(Zeros(n, n), (2 * nspec - 1, 2 * nspec - 1))
+        # elseif matrixtype==:multidiagonal
+        #     system.matrix=mdzeros(Tv,n,n,[-1,0,1]; blocksize=nspec)
+    else # :sparse
+        system.matrix = ExtendableSparseMatrix{Tv, Tm}(n, n)
+    end
+    =#
 
     if create_newtonvectors
         system.residual = unknowns(system)

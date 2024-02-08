@@ -30,6 +30,11 @@ using Symbolics
 using Random
 using RecursiveFactorization
 
+include("/home/johannes/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
+using .ExtendableSparseParallel
+
+
+
 include("vfvm_physics.jl")
 include("vfvm_functions.jl")
 export fbernoulli
@@ -133,7 +138,10 @@ include("gridvisualize.jl")
 export plothistory
 #include("precompile.jl")
 
-include("~/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
-using .ExtendableSparseParallel
+include("parallel/vfvm_assembly.jl")
+include("parallel/vfvm_assemblydata.jl")
+
+
+
 
 end

@@ -1,3 +1,4 @@
+#=
 """
     $(TYPEDEF)
 
@@ -217,7 +218,7 @@ function _fill!(edge::Edge, asmdata::EdgewiseAssemblyData{Tv,Ti}, k, iedge) wher
     edge.region = asmdata.edgefactors.rowval[k]
     edge.fac = asmdata.edgefactors.nzval[k]
 end
-
+=#
 
 
 
@@ -233,28 +234,31 @@ Assemble residual and jacobian for node functions. Parameters:
 - `asm_jac(idof,jdof,ispec,jspec)`: e.g.  assemble entry `ispec,jspec` of local jacobian into entry `idof,jdof` of global matrix
 - `asm_param(idof,ispec,iparam)` shall assemble parameter derivatives
 """
-@inline function assemble_res_jac(
+@inline function assemble_res_jac_reordered(
     node::Node,
     system::AbstractSystem,
     asm_res::R,
     asm_jac::J,
     asm_param::P,
+    new_ind
 ) where {R,J,P}
     K = node.index
     ireg = node.region
     for idof = firstnodedof(system, K):lastnodedof(system, K)
         ispec = getspecies(system, idof)
+        nidof = new_ind[idof]
         if isregionspecies(system, ispec, ireg) # it is not enough to know if the species are defined...
-            asm_res(idof, ispec)
+            asm_res(nidof, ispec)
             for jdof = firstnodedof(system, K):lastnodedof(system, K)
+	 	    	njdof = new_ind[jdof]
                 jspec = getspecies(system, jdof)
                 if isregionspecies(system, jspec, ireg)
-                    asm_jac(idof, jdof, ispec, jspec)
+                    asm_jac(nidof, njdof, ispec, jspec)
                 end
             end
         end
         for iparam = 1:(system.num_parameters)
-            asm_param(idof, ispec, iparam)
+            asm_param(nidof, ispec, iparam)
         end
     end
 end
@@ -265,27 +269,30 @@ $(SIGNATURES)
 Assemble residual and jacobian for boundary node functions.
 See [`assemble_res_jac`](@ref) for more explanations.
 """
-@inline function assemble_res_jac(
+@inline function assemble_res_jac_reordered(
     bnode::BNode,
     system::AbstractSystem,
     asm_res::R,
     asm_jac::J,
     asm_param::P,
+    new_ind
 ) where {R,J,P}
     K = bnode.index
     for idof = firstnodedof(system, K):lastnodedof(system, K)
-        ispec = getspecies(system, idof)
+    	nidof = new_ind[idof]
+        ispec = getspecies(system, nidof)
         if isnodespecies(system, ispec, K)
             asm_res(idof, ispec)
             for jdof = firstnodedof(system, K):lastnodedof(system, K)
+            	njdof = new_ind[jdof]
                 jspec = getspecies(system, jdof)
                 if isnodespecies(system, jspec, K)
-                    asm_jac(idof, jdof, ispec, jspec)
+                    asm_jac(nidof, njdof, ispec, jspec)
                 end
             end
         end
         for iparam = 1:(system.num_parameters)
-            asm_param(idof, ispec, iparam)
+            asm_param(nidof, ispec, iparam)
         end
     end
 end
@@ -296,13 +303,14 @@ $(SIGNATURES)
 Assemble residual for node functions.
 See [`assemble_res_jac`](@ref) for more explanations.
 """
-@inline function assemble_res(node::Node, system::AbstractSystem, asm_res::R) where {R}
+@inline function assemble_res_reordered(node::Node, system::AbstractSystem, asm_res::R, new_ind) where {R}
     K = node.index
     ireg = node.region
     for idof = firstnodedof(system, K):lastnodedof(system, K)
         ispec = getspecies(system, idof)
+        nidof = new_ind[idof]
         if isregionspecies(system, ispec, ireg)
-            asm_res(idof, ispec)
+            asm_res(nidof, ispec)
         end
     end
 end
@@ -313,12 +321,13 @@ $(SIGNATURES)
 Assemble residual for boundary node functions.
 See [`assemble_res_jac`](@ref) for more explanations.
 """
-@inline function assemble_res(bnode::BNode, system::AbstractSystem, asm_res::R) where {R}
+@inline function assemble_res_reordered(bnode::BNode, system::AbstractSystem, asm_res::R, new_ind) where {R}
     K = bnode.index
     for idof = firstnodedof(system, K):lastnodedof(system, K)
+    	nidof = new_ind[idof]
         ispec = getspecies(system, idof)
         if isnodespecies(system, ispec, K)
-            asm_res(idof, ispec)
+            asm_res(nidof, ispec)
         end
     end
 end
@@ -334,38 +343,43 @@ Assemble residual and jacobian for edge (flux) functions. Parameters:
 - `asm_jac(idofK,jdofK,idofL,jdofL,ispec,jspec)`: e.g.  assemble entry `ispec,jspec` of local jacobian into entry four entries defined by `idofK` and `idofL` of global matrix
 - `asm_param(idofK,idofL,ispec,iparam)` shall assemble parameter derivatives
 """
-@inline function assemble_res_jac(
+@inline function assemble_res_jac_reordered(
     edge::Edge,
     system::AbstractSystem,
     asm_res::R,
     asm_jac::J,
     asm_param::P,
+    new_ind
 ) where {R,J,P}
     K = edge.node[1]
     L = edge.node[2]
     ireg = edge.region
 
     for idofK = firstnodedof(system, K):lastnodedof(system, K)
+    	nidofK = new_ind[idofK]
         ispec = getspecies(system, idofK)
         if isregionspecies(system, ispec, ireg)
             idofL = getnodedof(system, ispec, L)
             if idofL > 0
-                asm_res(idofK, idofL, ispec)
+                nidofL = new_ind[idofL]
+    			asm_res(nidofK, nidofL, ispec)
                 for jdofK = firstnodedof(system, K):lastnodedof(system, K)
+                    njdofK = new_ind[jdofK]
                     jspec = getspecies(system, jdofK)
                     if isregionspecies(system, jspec, ireg)
                         jdofL = getnodedof(system, jspec, L)
                         if jdofL > 0
-                            asm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
+                        	njdofL = new_ind[jdofL]
+                            asm_jac(nidofK, njdofK, nidofL, njdofL, ispec, jspec)
                         end
                     end
                 end
             end
         end
 
-        for iparam = 1:(system.num_parameters)
-            asm_param(idofK, idofL, ispec, iparam)
-        end
+        #for iparam = 1:(system.num_parameters)
+        #    asm_param(nidofK, nidofL, ispec, iparam)
+        #end
     end
 end
 
@@ -375,17 +389,19 @@ $(SIGNATURES)
 Assemble residual for edge (flux) functions.
 See [`assemble_res_jac`](@ref) for more explanations.
 """
-@inline function assemble_res(edge::Edge, system::AbstractSystem, asm_res::R) where {R}
+@inline function assemble_res_reordered(edge::Edge, system::AbstractSystem, asm_res::R, new_ind) where {R}
     K = edge.node[1]
     L = edge.node[2]
     ireg = edge.region
 
     for idofK = firstnodedof(system, K):lastnodedof(system, K)
         ispec = getspecies(system, idofK)
+        nidofK = new_ind[idofK]
         if isregionspecies(system, ispec, ireg)
             idofL = getnodedof(system, ispec, L)
             if idofL > 0
-                asm_res(idofK, idofL, ispec)
+            	nidofL = new_ind[idofL]
+                asm_res(nidofK, nidofL, ispec)
             end
         end
     end
@@ -397,28 +413,33 @@ $(SIGNATURES)
 Assemble residual and jacobian for boundary edge (flux) functions.
 See [`assemble_res_jac`](@ref) for more explanations.
 """
-@inline function assemble_res_jac(
+@inline function assemble_res_jac_reordered(
     bedge::BEdge,
     system::AbstractSystem,
     asm_res::R,
     asm_jac::J,
     asm_param::P,
+    new_ind
 ) where {R,J,P}
     K = bedge.node[1]
     L = bedge.node[2]
     for idofK = firstnodedof(system, K):lastnodedof(system, K)
         ispec = getspecies(system, idofK)
+        nidofK = new_ind[idofK]
         if isnodespecies(system, ispec, K)
             idofL = getnodedof(system, ispec, L)
             if idofL > 0
-                asm_res(idofK, idofL, ispec)
+            	nidofL = new_ind[idofL]
+                asm_res(nidofK, nidofL, ispec)
 
                 for jdofK = firstnodedof(system, K):lastnodedof(system, K)
+                    njdofK = new_ind[jdofK]
                     jspec = getspecies(system, jdofK)
                     if isnodespecies(system, jspec, K)
                         jdofL = getnodedof(system, jspec, L)
                         if jdofL > 0
-                            asm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
+                            njdofL = new_ind[jdofL]
+                            asm_jac(nidofK, njdofK, nidofL, njdofL, ispec, jspec)
                         end
                     end
                 end
@@ -426,9 +447,9 @@ See [`assemble_res_jac`](@ref) for more explanations.
         end
     end
 
-    for iparam = 1:(system.num_parameters)
-        asm_param(idofK, idofL, ispec, iparam)
-    end
+    #for iparam = 1:(system.num_parameters)
+    #    asm_param(idofK, idofL, ispec, iparam)
+    #end
 end
 
 """
@@ -437,15 +458,17 @@ $(SIGNATURES)
 Assemble residual for boundary edge (flux) functions.
 See [`assemble_res_jac`](@ref) for more explanations.
 """
-@inline function assemble_res(bedge::BEdge, system::AbstractSystem, asm_res::R) where {R}
+@inline function assemble_res_reordered(bedge::BEdge, system::AbstractSystem, asm_res::R) where {R}
     K = bedge.node[1]
     L = bedge.node[2]
     for idofK = firstnodedof(system, K):lastnodedof(system, K)
         ispec = getspecies(system, idofK)
+        nidofK = new_ind[idofK]
         if isnodespecies(system, ispec, K)
             idofL = dof(F, ispec, L)
+            nidofL = new_ind[idofL]
             if idofL > 0
-                asm_res(idofK, idofL, ispec)
+                asm_res(nidofK, nidofL, ispec)
             end
         end
     end

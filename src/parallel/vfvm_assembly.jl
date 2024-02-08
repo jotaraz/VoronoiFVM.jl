@@ -1,47 +1,4 @@
-##################################################################
-"""
-$(SIGNATURES)
-
-Extract value from dual number. Use to debug physics callbacks.
-Re-exported from ForwardDiff.jl
-"""
-const value = ForwardDiff.value
-
-
-"""
-$(SIGNATURES)
-
-Add value `v*fac` to matrix if `v` is nonzero
-"""
-@inline function _addnz(matrix, i, j, v::Tv, fac) where {Tv}
-    if isnan(v)
-        error("trying to assemble NaN")
-    end
-    if v != zero(Tv)
-        rawupdateindex!(matrix, +, v * fac, i, j)
-    end
-end
-
-ExtendableSparse.rawupdateindex!(m::AbstractMatrix, op, v, i, j) = m[i, j] = op(m[i, j], v)
-
-
-function zero!(m::ExtendableSparseMatrix{Tv,Ti}) where {Tv,Ti}
-    nzv = nonzeros(m)
-    nzv .= zero(Tv)
-end
-
-zero!(m::AbstractMatrix{T}) where {T} = m .= zero(T)
-
-
-"""
-$(SIGNATURES)
-
-Main assembly method.
-
-Evaluate solution with result in right hand side F and 
-assemble Jacobi matrix into system.matrix.
-"""
-function eval_and_assemble(
+function eval_and_assemble_ESMP(
     system::System{Tv,Tc,Ti,Tm,TSpecMat,TSolArray},
     U::AbstractMatrix{Tv}, # Actual solution iteration
     UOld::AbstractMatrix{Tv}, # Old timestep solution
@@ -61,7 +18,11 @@ function eval_and_assemble(
     nspecies::Int = num_species(system)
 
     # Reset matrix + rhs
-    zero!(system.matrix)
+    new_ind = system.matrix.new_indices
+    #zero!(system.matrix)
+    
+    reset!(system.matrix)
+    
     F .= 0.0
     nparams::Int = system.num_parameters
 
@@ -148,7 +109,7 @@ function eval_and_assemble(
                     node.fac
             end
 
-            assemble_res_jac(node, system, asm_res, asm_jac, asm_param)
+            assemble_res_jac_reordered(node, system, asm_res, asm_jac, asm_param, new_ind)
         end
     end
 
@@ -199,7 +160,7 @@ function eval_and_assemble(
                 dudp[iparam][ispec, idofL] -= edge.fac * jac_flux[ispec, jparam]
             end
 
-            assemble_res_jac(edge, system, asm_res, asm_jac, asm_param)
+            assemble_res_jac_reordered(edge, system, asm_res, asm_jac, asm_param, new_ind)
 
             ##################################################################################
             if isnontrivial(erea_evaluator)
@@ -238,7 +199,7 @@ function eval_and_assemble(
                     dudp[iparam][ispec, idofL] += edge.fac * jac_erea[ispec, jparam]
                 end
 
-                assemble_res_jac(edge, system, ereaasm_res, ereaasm_jac, ereaasm_param)
+                assemble_res_jac_reordered(edge, system, ereaasm_res, ereaasm_jac, ereaasm_param, new_ind)
             end
 
             ##################################################################################
@@ -306,12 +267,13 @@ function eval_and_assemble(
                     end
                 end
 
-                assemble_res_jac(
+                assemble_res_jac_reordered(
                     edge,
                     system,
                     outflowasm_res,
                     outflowasm_jac,
                     outflowasm_param,
+                    new_ind
                 )
             end
 
@@ -394,7 +356,7 @@ function eval_and_assemble(
                 dudp[iparam][ispec, idof] +=
                     jac_breact[ispec, nspecies+iparam] * bnode.fac
 
-            assemble_res_jac(bnode, system, asm_res1, asm_jac1, asm_param1)
+            assemble_res_jac_reordered(bnode, system, asm_res1, asm_jac1, asm_param1, new_ind)
 
             if isnontrivial(bstor_evaluator)
                 evaluate!(bstor_evaluator, UK)
@@ -426,7 +388,7 @@ function eval_and_assemble(
                         jac_bstor[ispec, nspecies+iparam] * bnode.fac * tstepinv
                 end
 
-                assemble_res_jac(bnode, system, asm_res2, asm_jac2, asm_param2)
+                assemble_res_jac_reordered(bnode, system, asm_res2, asm_jac2, asm_param2, new_ind)
             end
         end # ibnode=1:nbn
     end
@@ -471,7 +433,7 @@ function eval_and_assemble(
                     dudp[iparam][ispec, idofK] += bedge.fac * jac_bflux[ispec, jparam]
                     dudp[iparam][ispec, idofL] -= bedge.fac * jac_bflux[ispec, jparam]
                 end
-                assemble_res_jac(bedge, system, asm_res, asm_jac, asm_param)
+                assemble_res_jac_reordered(bedge, system, asm_res, asm_jac, asm_param, new_ind)
             end
         end
     end
@@ -490,45 +452,4 @@ function eval_and_assemble(
     _eval_and_assemble_inactive_species(system, U, UOld, F)
 
     ncalloc, nballoc, neval
-end
-
-"""
-Evaluate and assemble jacobian for generic operator part.
-"""
-function _eval_and_assemble_generic_operator(system::AbstractSystem, U, F)
-    if !has_generic_operator(system)
-        return
-    end
-    generic_operator(f, u) = system.physics.generic_operator(f, u, system)
-    vecF = values(F)
-    vecU = values(U)
-    y = similar(vecF)
-    generic_operator(y, vecU)
-    vecF .+= y
-    forwarddiff_color_jacobian!(
-        system.generic_matrix,
-        generic_operator,
-        vecU;
-        colorvec = system.generic_matrix_colors,
-    )
-    rowval = system.generic_matrix.rowval
-    colptr = system.generic_matrix.colptr
-    nzval = system.generic_matrix.nzval
-    for i = 1:(length(colptr)-1)
-        for j = colptr[i]:(colptr[i+1]-1)
-            updateindex!(system.matrix, +, nzval[j], rowval[j], i)
-        end
-    end
-end
-
-function _eval_generic_operator(system::AbstractSystem, U, F)
-    if !has_generic_operator(system)
-        return
-    end
-    generic_operator(f, u) = system.physics.generic_operator(f, u, system)
-    vecF = values(F)
-    vecU = values(U)
-    y = similar(vecF)
-    generic_operator(y, vecU)
-    vecF .+= y
 end

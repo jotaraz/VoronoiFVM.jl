@@ -22,6 +22,15 @@ Add value `v*fac` to matrix if `v` is nonzero
     end
 end
 
+@inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, v::Tv, fac) where {Tv}
+    if isnan(v)
+        error("trying to assemble NaN")
+    end
+    if v != zero(Tv)
+        ExtendableSparseParallel.rawupdateindex!(matrix, +, v * fac, i, j)
+    end
+end
+
 ExtendableSparse.rawupdateindex!(m::AbstractMatrix, op, v, i, j) = m[i, j] = op(m[i, j], v)
 
 
