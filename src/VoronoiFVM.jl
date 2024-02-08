@@ -133,4 +133,7 @@ include("gridvisualize.jl")
 export plothistory
 #include("precompile.jl")
 
+include("~/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
+using .ExtendableSparseParallel
+
 end
