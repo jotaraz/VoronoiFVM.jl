@@ -49,6 +49,7 @@ function eval_and_assemble_ESMP(
     # comes handy to write compact code here for the
     # case of stationary problems.
     tstepinv = 1.0 / tstep
+    @info tstepinv
 
     #
     # These wrap the different physics functions.
@@ -280,6 +281,8 @@ function eval_and_assemble_ESMP(
 
         end
     end
+    
+    #=
 
     bnode = BNode(system, time, λ, params)
     bedge = BEdge(system, time, λ, params)
@@ -437,6 +440,7 @@ function eval_and_assemble_ESMP(
             end
         end
     end
+    =#
 
     noallocs(m::ExtendableSparseMatrix) = isnothing(m.lnkmatrix)
     noallocs(m::AbstractMatrix) = false

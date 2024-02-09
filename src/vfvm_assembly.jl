@@ -15,16 +15,16 @@ Add value `v*fac` to matrix if `v` is nonzero
 """
 @inline function _addnz(matrix, i, j, v::Tv, fac) where {Tv}
     if isnan(v)
-        error("trying to assemble NaN")
+        error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
-        rawupdateindex!(matrix, +, v * fac, i, j)
+        ExtendableSparse.rawupdateindex!(matrix, +, v * fac, i, j)
     end
 end
 
 @inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, v::Tv, fac) where {Tv}
     if isnan(v)
-        error("trying to assemble NaN")
+        error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
         ExtendableSparseParallel.rawupdateindex!(matrix, +, v * fac, i, j)
@@ -327,6 +327,7 @@ function eval_and_assemble(
 
         end
     end
+
 
     bnode = BNode(system, time, λ, params)
     bedge = BEdge(system, time, λ, params)
