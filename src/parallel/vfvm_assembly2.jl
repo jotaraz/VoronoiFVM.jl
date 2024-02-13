@@ -7,8 +7,8 @@ function eval_and_assemble_ESMP(
     tstep,# time step size. Inf means stationary solution
     λ,
     params::AbstractVector;
-    edge_cutoff = 0.0,
-) where {Tv,Tc,Ti,Tm,TSpecMat,TSolArray}
+    new_ind = 0,
+    edge_cutoff = 0.0) where {Tv,Tc,Ti,Tm,TSpecMat,TSolArray}
     _complete!(system) # needed here as well for test function system which does not use newton
 
     grid = system.grid
@@ -18,10 +18,14 @@ function eval_and_assemble_ESMP(
     nspecies::Int = num_species(system)
 
     # Reset matrix + rhs
-    new_ind = system.matrix.new_indices
-    #zero!(system.matrix)
+    if new_ind == 0
+	    new_ind = system.matrix.new_indices
+    	reset!(system.matrix)
+	else
+		zero!(system.matrix)
+	end
+    #
     
-    reset!(system.matrix)
     
     F .= 0.0
     nparams::Int = system.num_parameters
@@ -49,7 +53,7 @@ function eval_and_assemble_ESMP(
     # comes handy to write compact code here for the
     # case of stationary problems.
     tstepinv = 1.0 / tstep
-    @info tstepinv
+    
 
     #
     # These wrap the different physics functions.
@@ -282,7 +286,7 @@ function eval_and_assemble_ESMP(
         end
     end
     
-    #=
+    
 
     bnode = BNode(system, time, λ, params)
     bedge = BEdge(system, time, λ, params)
@@ -291,6 +295,7 @@ function eval_and_assemble_ESMP(
     boundary_factors::Array{Tv,2} = system.boundary_factors
     boundary_values::Array{Tv,2} = system.boundary_values
     has_legacy_bc = !iszero(boundary_factors) || !iszero(boundary_values)
+	@info has_legacy_bc
 
     bsrc_evaluator = ResEvaluator(physics, :bsource, UK, bnode, nspecies)
     brea_evaluator = ResJacEvaluator(physics, :breaction, UK, bnode, nspecies)
@@ -298,7 +303,7 @@ function eval_and_assemble_ESMP(
     oldbstor_evaluator = ResEvaluator(physics, :bstorage, UK, bnode, nspecies)
     bflux_evaluator = ResJacEvaluator(physics, :bflux, UKL, bedge, nspecies)
 
-
+	
 
     nballoc = @allocated for item in nodebatch(system.boundary_assembly_data)
         for ibnode in noderange(system.boundary_assembly_data, item)
@@ -313,6 +318,7 @@ function eval_and_assemble_ESMP(
                 # valid only for interior species, currently not checked
                 for ispec = 1:nspecies
                     idof = dof(F, ispec, K)
+                    nidof = new_ind[idof]
                     # If species is present, assemble the boundary condition
                     if idof > 0
                         # Get user specified data
@@ -328,12 +334,12 @@ function eval_and_assemble_ESMP(
 
                             # Add penalty to matrix main diagonal (without bnode factor, so penalty
                             # is independent of h)
-                            _addnz(system.matrix, idof, idof, boundary_factor, 1)
+                            _addnz(system.matrix, nidof, nidof, boundary_factor, 1)
                         else
                             # Robin boundary condition
                             F[ispec, K] +=
                                 bnode.fac * (boundary_factor * U[ispec, K] - boundary_value)
-                            _addnz(system.matrix, idof, idof, boundary_factor, bnode.fac)
+                            _addnz(system.matrix, nidof, nidof, boundary_factor, bnode.fac)
                         end
                     end
                 end
@@ -395,8 +401,8 @@ function eval_and_assemble_ESMP(
             end
         end # ibnode=1:nbn
     end
-
-    if isnontrivial(bflux_evaluator)
+	
+	if isnontrivial(bflux_evaluator)
         nballoc += @allocated for item in edgebatch(system.boundary_assembly_data)
             for ibedge in edgerange(system.boundary_assembly_data, item)
                 _fill!(bedge, system.boundary_assembly_data, ibedge, item)
@@ -440,8 +446,8 @@ function eval_and_assemble_ESMP(
             end
         end
     end
-    =#
-
+	
+	#=
     noallocs(m::ExtendableSparseMatrix) = isnothing(m.lnkmatrix)
     noallocs(m::AbstractMatrix) = false
     # if  no new matrix entries have been created, we should see no allocations
@@ -456,4 +462,7 @@ function eval_and_assemble_ESMP(
     _eval_and_assemble_inactive_species(system, U, UOld, F)
 
     ncalloc, nballoc, neval
+    =#
 end
+
+

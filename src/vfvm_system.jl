@@ -313,7 +313,7 @@ function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
         throw("specify either unknown_storage=:dense  or unknown_storage=:sparse")
     end
     
-    grid, nnts, s, onr, cfp, gi, gc, ni, rni, starts = preparatory_multi_ps_less_reverse(nm, nt, depth, Tm)
+    grid, nnts, s, onr, cfp, gi, gc, ni, rni, starts, cellparts = preparatory_multi_ps_less_reverse(nm, nt, depth, Tm)
     
     #system.matrix = ExtendableSparseParallel.ExtendableSparseMatrixParallel{Tv, Tm}(nm, nt, depth)
 
@@ -340,7 +340,7 @@ function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
     
     csc = spzeros(Tv, Tm, num_nodes(grid), num_nodes(grid))
 	lnk = [SuperSparseMatrixLNK{Tv, Tm}(num_nodes(grid), nnts[tid]) for tid=1:nt]
-	system.matrix = ExtendableSparseMatrixParallel{Tv, Tm}(csc, lnk, grid, nnts, s, onr, cfp, gi, ni, rni, starts, nt, depth)
+	system.matrix = ExtendableSparseMatrixParallel{Tv, Tm}(csc, lnk, grid, nnts, s, onr, cfp, gi, ni, rni, starts, cellparts, nt, depth)
     
     return system
 end
@@ -826,6 +826,14 @@ function update_grid_cellwise!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid) whe
 end
 
 function update_grid_edgewise!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid) where {Tv, Tc, Ti, Tm}
+	#if typeof(system.matrix) == ExtendableSparseMatrixParallel
+	#	update_grid_edgewise_part!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid)
+	#else
+	update_grid_edgewise_seq!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid)
+	#end
+end
+
+function update_grid_edgewise_seq!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid) where {Tv, Tc, Ti, Tm}
     geom = grid[CellGeometries][1]
     csys = grid[CoordinateSystem]
     coord = grid[Coordinates]
@@ -877,6 +885,105 @@ function update_grid_edgewise!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid) whe
     system.assembly_data = EdgewiseAssemblyData{Tc, Ti}(SparseMatrixCSC(cnf), SparseMatrixCSC(cef))
     system.boundary_assembly_data = CellwiseAssemblyData{Tc, Ti}(bfacenodefactors, bfaceedgefactors)
 end
+
+"""
+Much of this could and should be done in preparatory or smth.
+"""
+#=
+function update_grid_edgewise_part!(system::AbstractSystem{Tv, Tc, Ti, Tm}, grid) where {Tv, Tc, Ti, Tm}
+    geom = grid[CellGeometries][1]
+    csys = grid[CoordinateSystem]
+    coord = grid[Coordinates]
+    cellnodes = grid[CellNodes]
+    cellregions = grid[CellRegions]
+    bgeom = grid[BFaceGeometries][1]
+    bfacenodes = grid[BFaceNodes]
+    bfaceedges = grid[BFaceEdges]
+    nbfaces = num_bfaces(grid)
+    ncells = num_cells(grid)
+
+    celledges = grid[CellEdges]
+    grid[EdgeNodes] # !!!workaround for bug in extendablegrids: sets num_edges right.
+    bfacenodefactors = zeros(Tv, num_nodes(bgeom), nbfaces)
+    bfaceedgefactors = zeros(Tv, num_edges(bgeom), nbfaces)
+    
+    nt = system.matrix.nt
+    depth = system.matrix.depth
+    cfp   = system.matrix.cellsforpart
+    #cellparts = system.matrix.cellparts
+    
+    #cnf = [ExtendableSparseMatrix{Tv, Ti}(num_cellregions(grid), num_nodes(grid)) for i=nt*depth+1]
+    #cef = [ExtendableSparseMatrix{Tv, Ti}(num_cellregions(grid), num_edges(grid)) for i=nt*depth+1]
+
+    nn::Int = num_nodes(geom)
+    ne::Int = num_edges(geom)
+
+    function edgewise_factors!(csys::Type{T}) where {T}
+    	nnp = zeros(Int, nt*depth+1) #number of nodes per partition
+    	nep = zeros(Int, nt*depth+1) #number of edges per partition
+    	
+    	# count how many nodes & edges per partition
+    	for part=1:nt*depth+1
+    		tmp_n = []
+    		tmp_e = []
+    		for icell in cfp[part]
+    			for inode in cellnodes[:,icell]
+    				if !(inode in tmp_n)
+    					push!(tmp_n, inode)
+    				end
+    			end
+    		
+    			for iedge in celledges[:,icell]
+    				if !(iedge in tmp_e)
+    					push!(tmp_e, iedge)
+    				end
+    			end
+    		end
+    		
+    		nnp[part] = length(tmp_n)
+    		nep[part] = length(tmp_e)
+    	end
+    	
+    	# create local countings for edges and nodes
+    	# should be in prep
+    	
+    	cnf = [ExtendableSparseMatrix{Tv, Ti}(num_cellregions(grid), nnp[i]) for i=nt*depth+1]
+    	cef = [ExtendableSparseMatrix{Tv, Ti}(num_cellregions(grid), nep[i]) for i=nt*depth+1]
+	
+    		
+    
+        cellnodefactors = zeros(Tv, nn)
+        celledgefactors = zeros(Tv, ne)
+
+        for icell = 1:ncells
+        	
+        
+            @views cellfactors!(geom, csys, coord, cellnodes, icell, cellnodefactors, celledgefactors)
+            ireg = cellregions[icell]
+            for inode = 1:nn
+                cnf[cellparts[icell]][ireg, cellnodes[inode, icell]] += cellnodefactors[inode]
+            end
+
+            for iedge = 1:ne
+                cef[cellparts[icell]][ireg, celledges[iedge, icell]] += celledgefactors[iedge]
+            end
+        end
+
+        #        nalloc > 0 && @warn "$nalloc allocations in cell factor calculation"
+
+        nalloc = @allocated for ibface = 1:nbfaces
+            @views bfacefactors!(bgeom, csys, coord, bfacenodes, ibface,
+                                 bfacenodefactors[:, ibface], bfaceedgefactors[:, ibface])
+        end
+        nalloc > 0 && @warn "$nalloc allocations in bface factor calculation"
+    end
+
+    edgewise_factors!(csys)
+
+    system.assembly_data = EdgewiseAssemblyData{Tc, Ti}(SparseMatrixCSC.(cnf), SparseMatrixCSC.(cef))
+    system.boundary_assembly_data = CellwiseAssemblyData{Tc, Ti}(bfacenodefactors, bfaceedgefactors)
+end
+=#
 
 ################################################################################################
 # Degree of freedom handling

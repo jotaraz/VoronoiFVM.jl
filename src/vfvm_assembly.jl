@@ -31,6 +31,15 @@ end
     end
 end
 
+@inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, tid, v::Tv, fac) where {Tv}
+    if isnan(v)
+        error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
+    end
+    if v != zero(Tv)
+        ExtendableSparseParallel.rawupdateindex!(matrix, +, v * fac, i, j, tid)
+    end
+end
+
 ExtendableSparse.rawupdateindex!(m::AbstractMatrix, op, v, i, j) = m[i, j] = op(m[i, j], v)
 
 
@@ -162,7 +171,7 @@ function eval_and_assemble(
     end
 
     
-    if isnontrivial(outflow_evaluator)
+	if isnontrivial(outflow_evaluator)
     end
 
 
@@ -328,6 +337,7 @@ function eval_and_assemble(
         end
     end
 
+	
 
     bnode = BNode(system, time, λ, params)
     bedge = BEdge(system, time, λ, params)
@@ -343,7 +353,7 @@ function eval_and_assemble(
     oldbstor_evaluator = ResEvaluator(physics, :bstorage, UK, bnode, nspecies)
     bflux_evaluator = ResJacEvaluator(physics, :bflux, UKL, bedge, nspecies)
 
-
+	
 
     nballoc = @allocated for item in nodebatch(system.boundary_assembly_data)
         for ibnode in noderange(system.boundary_assembly_data, item)
@@ -440,7 +450,7 @@ function eval_and_assemble(
             end
         end # ibnode=1:nbn
     end
-
+    
     if isnontrivial(bflux_evaluator)
         nballoc += @allocated for item in edgebatch(system.boundary_assembly_data)
             for ibedge in edgerange(system.boundary_assembly_data, item)
@@ -486,6 +496,7 @@ function eval_and_assemble(
         end
     end
 
+	#=
     noallocs(m::ExtendableSparseMatrix) = isnothing(m.lnkmatrix)
     noallocs(m::AbstractMatrix) = false
     # if  no new matrix entries have been created, we should see no allocations
@@ -500,6 +511,7 @@ function eval_and_assemble(
     _eval_and_assemble_inactive_species(system, U, UOld, F)
 
     ncalloc, nballoc, neval
+    =#
 end
 
 """

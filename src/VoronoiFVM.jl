@@ -138,8 +138,10 @@ include("gridvisualize.jl")
 export plothistory
 #include("precompile.jl")
 
-include("parallel/vfvm_assembly.jl")
-include("parallel/vfvm_assemblydata.jl")
+include("parallel/vfvm_assembly2.jl")
+include("parallel/vfvm_assembly3.jl")
+include("parallel/vfvm_assembly4.jl")
+include("parallel/vfvm_assemblydata2.jl")
 
 
 
