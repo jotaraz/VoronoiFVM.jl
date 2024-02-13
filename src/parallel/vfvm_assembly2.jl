@@ -458,11 +458,11 @@ function eval_and_assemble_ESMP(
         nballoc = 0
         neval = 0
     end
+    =#
     _eval_and_assemble_generic_operator(system, U, F)
     _eval_and_assemble_inactive_species(system, U, UOld, F)
 
-    ncalloc, nballoc, neval
-    =#
+    ncalloc, nballoc
 end
 
 

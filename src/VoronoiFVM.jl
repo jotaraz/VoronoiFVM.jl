@@ -6,6 +6,7 @@ using Printf
 using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
+using Base.Threads
 import CommonSolve, SciMLBase
 
 

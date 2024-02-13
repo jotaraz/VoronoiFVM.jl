@@ -61,7 +61,7 @@ function example3(nm; verbose = false, unknown_storage = :sparse,
 	    VoronoiFVM._initialize!(solution, sys; time=0.0, λ = 0.0, params=zeros(0))
     end
     
-    t = @elapsed VoronoiFVM.eval_and_assemble(sys,
+    t = @elapsed ((n1, n2) = VoronoiFVM.eval_and_assemble(sys,
 		                               solution,
 		                               oldsol,
 		                               residual,
@@ -69,7 +69,7 @@ function example3(nm; verbose = false, unknown_storage = :sparse,
 		                               0.01,
 		                               0.0,
 		                               zeros(0);
-		                               edge_cutoff = 1e-5) #control.edge_cutoff,)
+		                               edge_cutoff = 1e-5)) #control.edge_cutoff,)
     #=
     VoronoiFVM._solve_timestep!(solution,
                      inival,
@@ -90,7 +90,7 @@ function example3(nm; verbose = false, unknown_storage = :sparse,
            params = zeros(0),
            called_from_API = true,)
 	=#
-    sys.matrix, t
+    sys.matrix, t, n1, n2
 end
 
 
@@ -149,11 +149,11 @@ function example3_ESMP(nm, nt, depth; verbose = false, unknown_storage = :sparse
     	VoronoiFVM._initialize!(solution, sys; time=0.0, λ = 0.0, params=zeros(0))
     end
     
-    t = @elapsed VoronoiFVM.eval_and_assemble_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0);edge_cutoff = 1e-5) #control.edge_cutoff)
+    t = @elapsed ((n1, n2) = VoronoiFVM.eval_and_assemble_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0);edge_cutoff = 1e-5))
 	
 	VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(sys.matrix; do_dense=true)
 	
-	sys.matrix, t
+	sys.matrix, t, n1, n2
 end
 
 function example3_ESMP_part(nm, nt, depth; verbose = false, unknown_storage = :sparse,
@@ -209,11 +209,11 @@ function example3_ESMP_part(nm, nt, depth; verbose = false, unknown_storage = :s
     	VoronoiFVM._initialize!(solution, sys; time=0.0, λ = 0.0, params=zeros(0))
     end
     
-    t = @elapsed VoronoiFVM.eval_and_assemble_part_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0);edge_cutoff = 1e-5) #control.edge_cutoff)
+    t = @elapsed ((n1, n2) = VoronoiFVM.eval_and_assemble_part_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0);edge_cutoff = 1e-5))
 	
 	VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(sys.matrix; do_dense=true)
 	
-	sys.matrix, t
+	sys.matrix, t, n1, n2
 end
 
 function example3_ESMP_part_para(nm, nt, depth; verbose = false, unknown_storage = :sparse,
@@ -269,11 +269,11 @@ function example3_ESMP_part_para(nm, nt, depth; verbose = false, unknown_storage
     	VoronoiFVM._initialize!(solution, sys; time=0.0, λ = 0.0, params=zeros(0))
     end
     
-    t = @elapsed VoronoiFVM.eval_and_assemble_part_para_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0);edge_cutoff = 1e-5) #control.edge_cutoff)
+    t = @elapsed ((n1, n2) = VoronoiFVM.eval_and_assemble_part_para_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0);edge_cutoff = 1e-5)) #control.edge_cutoff)
 	
 	VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(sys.matrix; do_dense=true)
 	
-	sys.matrix, t
+	sys.matrix, t, n1, n2
 end
 
 
@@ -330,7 +330,7 @@ function example3_reorder(nm, nt, depth; verbose = false, unknown_storage = :spa
     	VoronoiFVM._initialize!(solution, sys; time=0.0, λ = 0.0, params=zeros(0))
    	end
     
-    t = @elapsed VoronoiFVM.eval_and_assemble_ESMP(sys,
+    t = @elapsed ((n1, n2) = VoronoiFVM.eval_and_assemble_ESMP(sys,
 		                         solution,
 		                         oldsol,
 		                         residual,
@@ -339,9 +339,9 @@ function example3_reorder(nm, nt, depth; verbose = false, unknown_storage = :spa
 		                         0.0,
 		                         zeros(0);
 		                         edge_cutoff = 1e-5, #control.edge_cutoff,
-		                         new_ind = ni)
+		                         new_ind = ni))
     
-    sys.matrix, t
+    sys.matrix, t, n1, n2
 end
 
 
@@ -356,42 +356,45 @@ function reorder(x, ni)
 end
 
 function validate_ESMP(nm, nt, depth, do_init; test_vec=true)
-	ESM,t1   = example3(nm; do_init=do_init)
-	CSC1     = SparseArrays.SparseMatrixCSC(ESM)
+	ESM,t1,n11,n12   = example3(nm; do_init=do_init)
+	CSC1             = SparseArrays.SparseMatrixCSC(ESM)
 	
-	ESM2,t2  = example3_reorder(nm, nt, depth; do_init=do_init)
-	CSC2     = SparseArrays.SparseMatrixCSC(ESM2)
+	#ESM2,t2,n21,n22  = example3_reorder(nm, nt, depth; do_init=do_init)
+	#CSC2             = SparseArrays.SparseMatrixCSC(ESM2)
 	
-	ESMP,t3  = example3_ESMP(nm, nt, depth; do_init=do_init)
-	CSC3     = ESMP.cscmatrix
+	#ESMP,t3,n31,n32  = example3_ESMP(nm, nt, depth; do_init=do_init)
+	#CSC3             = ESMP.cscmatrix
 	
-	ESMP2,t4 = example3_ESMP_part(nm, nt, depth; do_init=do_init)
+	ESMP2,t4,n41,n42 = example3_ESMP_part(nm, nt, depth; do_init=do_init)
 	CSC4     = ESMP2.cscmatrix
 	
-	ESMP3,t5 = example3_ESMP_part_para(nm, nt, depth; do_init=do_init)
-	CSC5     = ESMP3.cscmatrix
+	ESMP3,t5,n51,n52 = example3_ESMP_part_para(nm, nt, depth; do_init=do_init)
+	CSC5             = ESMP3.cscmatrix
 	
 	if test_vec	
-		nn = num_nodes(ESMP.grid)
+		nn = num_nodes(ESMP2.grid)
 		b = rand(nn)
 		v = CSC1*b
 		
-		br = reorder(b, ESMP.new_indices)
-		vr2 = reorder(CSC2*br, ESMP.rev_new_indices)
-		vr3 = reorder(CSC3*br, ESMP.rev_new_indices)
+		br = reorder(b, ESMP2.new_indices)
+		#vr2 = reorder(CSC2*br, ESMP.rev_new_indices)
+		#vr3 = reorder(CSC3*br, ESMP.rev_new_indices)
 		vr4 = reorder(CSC4*br, ESMP2.rev_new_indices)
 		vr5 = reorder(CSC5*br, ESMP3.rev_new_indices)
 		
-		@info "max diff 2: ", maximum(abs.(v-vr2))
-		@info "max diff 3: ", maximum(abs.(v-vr3))
+		#@info "max diff 2: ", maximum(abs.(v-vr2))
+		#@info "max diff 3: ", maximum(abs.(v-vr3))
 		@info "max diff 4: ", maximum(abs.(v-vr4))
 		@info "max diff 5: ", maximum(abs.(v-vr5))
-		@info "max nz val: ", maximum(abs.(CSC2.nzval))
+		@info "max nz val: ", maximum(abs.(CSC1.nzval))
 	end
 	
-	@info t1, t2, t3, t4, t5
-
-	CSC1, CSC2, CSC3, ESMP
+	@info "Times:"
+	@info "Old Seq: ", t1, n11, n12
+	@info "New Seq: ", t4, n41, n42
+	@info "New Par: ", t5, n51, n52
+	
+	#CSC1, CSC2, CSC3, ESMP
 end
 
 
