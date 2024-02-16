@@ -40,7 +40,6 @@ end
 Plot one species from transient solution
 """
 function GridVisualize.scalarplot(sys::AbstractSystem, sol::AbstractTransientSolution; species = 1, scale=1.0, tscale=:identity, kwargs...)
-    @assert dim_space(grid) == 1
     vis = GridVisualizer(kwargs...)
     if !isnothing(vis.Plotter)
         scalarplot!(vis[1, 1], sys, sol; species = species,scale=scale, tscale=tscale, kwargs...)
@@ -79,19 +78,27 @@ function GridVisualize.scalarplot!(vis, sys::AbstractSystem, sol::AbstractTransi
 end
 
 """
-    plothistory(sys, tsol; 
+    plothistory(tsol; 
                 plots=[:timestepsizes,
                        :timestepupdates,
                        :newtonsteps,
                        :newtonupdates], 
                 size=(700,600), 
+                logmin=1.0e-20,
                 Plotter=GridVisualize.default_plotter(),
                 kwargs...)
 
 Plot solution history stored in `tsol`. The `plots` argument allows to choose which plots are shown.
 """
-function plothistory(tsol::TransientSolution; plots=[:timestepsizes,:timestepupdates,:newtonsteps,:newtonupdates],
-                     size=(700,150*length(plots)), Plotter=GridVisualize.default_plotter(), kwargs...)
+function plothistory(tsol::TransientSolution;
+                     plots=[:timestepsizes,
+                            :timestepupdates,
+                            :newtonsteps,
+                            :newtonupdates],
+                     size=(700,150*length(plots)),
+                     Plotter=GridVisualize.default_plotter(),
+                     logmin=1.0e-20,
+                     kwargs...)
     hist=history(tsol)
     t=hist.times
     if length(t)==0
@@ -105,8 +112,13 @@ function plothistory(tsol::TransientSolution; plots=[:timestepsizes,:timestepupd
             GridVisualize.scalarplot!(vis[iplot,1],t[1:(end - 1)], t[2:end] - t[1:(end - 1)];
                                       title = "Time step sizes",  xlabel = "t/s", ylabel = "Δt/s", color=:red, kwargs...)
         elseif plots[iplot]==:timestepupdates
-            GridVisualize.scalarplot!(vis[iplot,1],t, hist.updates,xlabel = "t/s", ylabel = "du",
-                                      title="Time step updates", color=:red, kwargs...)
+            GridVisualize.scalarplot!(vis[iplot,1],t,
+                                      hist.updates,
+                                      xlabel = "t/s",
+                                      ylabel = "du",
+                                      title="Time step updates",
+                                      color=:red,
+                                      kwargs...)
         elseif plots[iplot]==:newtonsteps
             newtons=map(h->length(h.updatenorm),hist.histories)
             GridVisualize.scalarplot!(vis[iplot,1],t, newtons,xlabel = "t/s", ylabel = "n",
