@@ -7,7 +7,7 @@ function eval_and_assemble_part_para_ESMP(
     tstep,# time step size. Inf means stationary solution
     λ,
     params::AbstractVector;
-    edge_cutoff = 0.0) where {Tv,Tc,Ti,Tm,TSpecMat,TSolArray}
+    edge_cutoff = 0.0, detail_allocs=false) where {Tv,Tc,Ti,Tm,TSpecMat,TSolArray}
     
     if system.assembly_type != :cellwise
     	@warn "Assembly has to be `:cellwise`"
@@ -15,10 +15,10 @@ function eval_and_assemble_part_para_ESMP(
     end
     _complete!(system) # needed here as well for test function system which does not use newton
 
-    
 
 	# Reset matrix + rhs
-    reset!(system.matrix)
+    #reset!(system.matrix)
+    system.matrix.cscmatrix.nzval .= 0
     new_ind = system.matrix.new_indices
     cfp     = system.matrix.cellsforpart
     nt      = system.matrix.nt
@@ -75,7 +75,7 @@ function eval_and_assemble_part_para_ESMP(
     
     
 
-    ncalloc = @allocated begin
+    nodealloc = @allocated begin
     	for level=1:depth
     		@threads for tid=1:nt
     			for item in cfp[(level-1)*nt+tid]
@@ -132,58 +132,68 @@ function eval_and_assemble_part_para_ESMP(
 				end
 			end
 		end
+	end
 		
+	nodesepaass = 0
+	nodesepafct = 0
+	nodesepapre = 0
+	nodesepaalloc = @allocated begin
+		@threads for tid=1:1
 		for item in cfp[depth*nt+1]
     		for inode in noderange(system.assembly_data, item)
-				_fill!(nodes[1], system.assembly_data, inode, item)
-				@views UKs[1][1:nspecies] .= U[:, nodes[1].index]
-				@views UKOlds[1][1:nspecies] .= UOld[:, nodes[1].index]
+    			nodesepapre += @allocated begin
+					_fill!(nodes[1], system.assembly_data, inode, item)
+					@views UKs[1][1:nspecies] .= U[:, nodes[1].index]
+					@views UKOlds[1][1:nspecies] .= UOld[:, nodes[1].index]
 
-				evaluate!(src_evaluators[1])
-				src = res(src_evaluators[1])
+					evaluate!(src_evaluators[1])
+					src = res(src_evaluators[1])
 
-				evaluate!(rea_evaluators[1], UKs[1])
-				res_react = res(rea_evaluators[1])
-				jac_react = jac(rea_evaluators[1])
+					evaluate!(rea_evaluators[1], UKs[1])
+					res_react = res(rea_evaluators[1])
+					jac_react = jac(rea_evaluators[1])
 
-				evaluate!(stor_evaluators[1], UKs[1])
-				res_stor = res(stor_evaluators[1])
-				jac_stor = jac(stor_evaluators[1])
+					evaluate!(stor_evaluators[1], UKs[1])
+					res_stor = res(stor_evaluators[1])
+					jac_stor = jac(stor_evaluators[1])
 
-				evaluate!(oldstor_evaluators[1], UKOlds[1])
-				oldstor = res(oldstor_evaluators[1])
+					evaluate!(oldstor_evaluators[1], UKOlds[1])
+					oldstor = res(oldstor_evaluators[1])
+				end
+				nodesepafct += @allocated begin
+					@inline function asm_res(idof, ispec)
+						_add(
+							F,
+							idof,
+							nodes[1].fac * (
+							    res_react[ispec] - src[ispec] +
+							    (res_stor[ispec] - oldstor[ispec]) * tstepinv
+							),
+						)
+					end
 
-				@inline function asm_res(idof, ispec)
-					_add(
-					    F,
-					    idof,
-					    nodes[1].fac * (
-					        res_react[ispec] - src[ispec] +
-					        (res_stor[ispec] - oldstor[ispec]) * tstepinv
-					    ),
-					)
+					@inline function asm_jac(idof, jdof, ispec, jspec)
+						_addnz(
+							system.matrix,
+							idof,
+							jdof,
+							1,
+							jac_react[ispec, jspec] + jac_stor[ispec, jspec] * tstepinv,
+							nodes[1].fac,
+						)
+					end
+
+					@inline function asm_param(idof, ispec, iparam)
+						jparam = nspecies + iparam
+						dudp[iparam][ispec, idof] +=
+							(jac_react[ispec, jparam] + jac_stor[ispec, jparam] * tstepinv) *
+							nodes[1].fac
+					end
 				end
 
-				@inline function asm_jac(idof, jdof, ispec, jspec)
-					_addnz(
-					    system.matrix,
-					    idof,
-					    jdof,
-					    1,
-					    jac_react[ispec, jspec] + jac_stor[ispec, jspec] * tstepinv,
-					    nodes[1].fac,
-					)
-				end
-
-				@inline function asm_param(idof, ispec, iparam)
-					jparam = nspecies + iparam
-					dudp[iparam][ispec, idof] +=
-					    (jac_react[ispec, jparam] + jac_stor[ispec, jparam] * tstepinv) *
-					    nodes[1].fac
-				end
-
-				assemble_res_jac_reordered(nodes[1], system, asm_res, asm_jac, asm_param, new_ind)
+				nodesepaass += @allocated assemble_res_jac_reordered(nodes[1], system, asm_res, asm_jac, asm_param, new_ind)
 			end
+		end
 		end
 	end
 		
@@ -191,7 +201,7 @@ function eval_and_assemble_part_para_ESMP(
     end
 
 
-    ncalloc += @allocated begin
+    edgealloc = @allocated begin
     	for level=1:depth
     		@threads for tid=1:nt
     			for item in cfp[(level-1)*nt+tid]
@@ -364,173 +374,173 @@ function eval_and_assemble_part_para_ESMP(
 				end
     		end
     	end
-    end
     
-    for item in cfp[depth*nt+1]
-		for iedge in edgerange(system.assembly_data, item)
-			_fill!(edges[1], system.assembly_data, iedge, item)
+		for item in cfp[depth*nt+1]
+			for iedge in edgerange(system.assembly_data, item)
+				_fill!(edges[1], system.assembly_data, iedge, item)
 
-			@views UKLs[1][1:nspecies] .= U[:, edges[1].node[1]]
-			@views UKLs[1][(nspecies+1):(2*nspecies)] .= U[:, edges[1].node[2]]
+				@views UKLs[1][1:nspecies] .= U[:, edges[1].node[1]]
+				@views UKLs[1][(nspecies+1):(2*nspecies)] .= U[:, edges[1].node[2]]
 
-			evaluate!(flux_evaluators[1], UKLs[1])
-			res_flux = res(flux_evaluators[1])
-			jac_flux = jac(flux_evaluators[1])
+				evaluate!(flux_evaluators[1], UKLs[1])
+				res_flux = res(flux_evaluators[1])
+				jac_flux = jac(flux_evaluators[1])
 
-			@inline function asm_res(idofK, idofL, ispec)
-			    val = edges[1].fac * res_flux[ispec]
-			    _add(F, idofK, val)
-			    _add(F, idofL, -val)
-			end
+				@inline function asm_res(idofK, idofL, ispec)
+					val = edges[1].fac * res_flux[ispec]
+					_add(F, idofK, val)
+					_add(F, idofL, -val)
+				end
 
-			@inline function asm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
-			    _addnz(system.matrix, idofK, jdofK, 1, +jac_flux[ispec, jspec], edges[1].fac)
-			    _addnz(system.matrix, idofL, jdofK, 1, -jac_flux[ispec, jspec], edges[1].fac)
-			    _addnz(
-			        system.matrix,
-			        idofK,
-			        jdofL,
-			        1,
-			        +jac_flux[ispec, jspec+nspecies],
-			        edges[1].fac,
-			    )
-			    _addnz(
-			        system.matrix,
-			        idofL,
-			        jdofL,
-			        1,
-			        -jac_flux[ispec, jspec+nspecies],
-			        edges[1].fac,
-			    )
-			end
+				@inline function asm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
+					_addnz(system.matrix, idofK, jdofK, 1, +jac_flux[ispec, jspec], edges[1].fac)
+					_addnz(system.matrix, idofL, jdofK, 1, -jac_flux[ispec, jspec], edges[1].fac)
+					_addnz(
+					    system.matrix,
+					    idofK,
+					    jdofL,
+					    1,
+					    +jac_flux[ispec, jspec+nspecies],
+					    edges[1].fac,
+					)
+					_addnz(
+					    system.matrix,
+					    idofL,
+					    jdofL,
+					    1,
+					    -jac_flux[ispec, jspec+nspecies],
+					    edges[1].fac,
+					)
+				end
 
-			@inline function asm_param(idofK, idofL, ispec, iparam)
-			    jparam = 2 * nspecies + iparam
-			    dudp[iparam][ispec, idofK] += edges[1].fac * jac_flux[ispec, jparam]
-			    dudp[iparam][ispec, idofL] -= edges[1].fac * jac_flux[ispec, jparam]
-			end
+				@inline function asm_param(idofK, idofL, ispec, iparam)
+					jparam = 2 * nspecies + iparam
+					dudp[iparam][ispec, idofK] += edges[1].fac * jac_flux[ispec, jparam]
+					dudp[iparam][ispec, idofL] -= edges[1].fac * jac_flux[ispec, jparam]
+				end
 
-			assemble_res_jac_reordered(edges[1], system, asm_res, asm_jac, asm_param, new_ind)
+				assemble_res_jac_reordered(edges[1], system, asm_res, asm_jac, asm_param, new_ind)
 
-			##################################################################################
-			if isnontrivial(erea_evaluators[1])
-			    evaluate!(erea_evaluators[1], UKLs[1])
-			    res_erea = res(erea_evaluators[1])
-			    jac_erea = jac(erea_evaluators[1])
+				##################################################################################
+				if isnontrivial(erea_evaluators[1])
+					evaluate!(erea_evaluators[1], UKLs[1])
+					res_erea = res(erea_evaluators[1])
+					jac_erea = jac(erea_evaluators[1])
 
-			    @inline function ereaasm_res(idofK, idofL, ispec)
-			        val = edges[1].fac * res_erea[ispec]
-			        _add(F, idofK, val)
-			        _add(F, idofL, val)
-			    end
+					@inline function ereaasm_res(idofK, idofL, ispec)
+					    val = edges[1].fac * res_erea[ispec]
+					    _add(F, idofK, val)
+					    _add(F, idofL, val)
+					end
 
-			    @inline function ereaasm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
-			        _addnz(system.matrix, idofK, jdofK, 1, +jac_erea[ispec, jspec], edges[1].fac)
-			        _addnz(system.matrix, idofL, jdofK, 1, -jac_erea[ispec, jspec], edges[1].fac)
-			        _addnz(
-			            system.matrix,
-			            idofK,
-			            jdofL,
-			            1,
-			            -jac_erea[ispec, jspec+nspecies],
-			            edges[1].fac,
-			        )
-			        _addnz(
-			            system.matrix,
-			            idofL,
-			            jdofL,
-			            1,
-			            +jac_erea[ispec, jspec+nspecies],
-			            edges[1].fac,
-			        )
-			    end
+					@inline function ereaasm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
+					    _addnz(system.matrix, idofK, jdofK, 1, +jac_erea[ispec, jspec], edges[1].fac)
+					    _addnz(system.matrix, idofL, jdofK, 1, -jac_erea[ispec, jspec], edges[1].fac)
+					    _addnz(
+					        system.matrix,
+					        idofK,
+					        jdofL,
+					        1,
+					        -jac_erea[ispec, jspec+nspecies],
+					        edges[1].fac,
+					    )
+					    _addnz(
+					        system.matrix,
+					        idofL,
+					        jdofL,
+					        1,
+					        +jac_erea[ispec, jspec+nspecies],
+					        edges[1].fac,
+					    )
+					end
 
-			    @inline function ereaasm_param(idofK, idofL, ispec, iparam)
-			        jparam = 2 * nspecies + iparam
-			        dudp[iparam][ispec, idofK] += edges[1].fac * jac_erea[ispec, jparam]
-			        dudp[iparam][ispec, idofL] += edges[1].fac * jac_erea[ispec, jparam]
-			    end
+					@inline function ereaasm_param(idofK, idofL, ispec, iparam)
+					    jparam = 2 * nspecies + iparam
+					    dudp[iparam][ispec, idofK] += edges[1].fac * jac_erea[ispec, jparam]
+					    dudp[iparam][ispec, idofL] += edges[1].fac * jac_erea[ispec, jparam]
+					end
 
-			    assemble_res_jac_reordered(edges[1], system, ereaasm_res, ereaasm_jac, ereaasm_param, new_ind)
-			end
+					assemble_res_jac_reordered(edges[1], system, ereaasm_res, ereaasm_jac, ereaasm_param, new_ind)
+				end
 
-			##################################################################################
-			if isnontrivial(outflow_evaluators[1]) && hasoutflownode(edges[1])
-			    outflownode!(edges[1])
-			    evaluate!(outflow_evaluators[1], UKLs[1])
-			    res_outflow = res(outflow_evaluators[1])
-			    jac_outflow = jac(outflow_evaluators[1])
-			    
-			    @inline function outflowasm_res(idofK, idofL, ispec)
-			        val = edges[1].fac * res_outflow[ispec]
+				##################################################################################
+				if isnontrivial(outflow_evaluators[1]) && hasoutflownode(edges[1])
+					outflownode!(edges[1])
+					evaluate!(outflow_evaluators[1], UKLs[1])
+					res_outflow = res(outflow_evaluators[1])
+					jac_outflow = jac(outflow_evaluators[1])
+					
+					@inline function outflowasm_res(idofK, idofL, ispec)
+					    val = edges[1].fac * res_outflow[ispec]
 
-			        if isoutflownode(edge,1)
-			            _add(F, idofK, val)
-			        end
-			        
-			        if isoutflownode(edge,2)
-			            _add(F, idofL, -val)
-			        end
-			    end
+					    if isoutflownode(edge,1)
+					        _add(F, idofK, val)
+					    end
+					    
+					    if isoutflownode(edge,2)
+					        _add(F, idofL, -val)
+					    end
+					end
 
-			    @inline function outflowasm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
-			        if isoutflownode(edge, 1)
-			            _addnz(
-			                system.matrix,
-			                idofK,
-			                jdofK,
-			                1,
-			                +jac_outflow[ispec, jspec],
-			                edges[1].fac
-			            )
-			            _addnz(
-			                system.matrix,
-			                idofK,
-			                jdofL,
-			                1,
-			                jac_outflow[ispec, jspec+nspecies],
-			                edges[1].fac
-			            )
-			        end
+					@inline function outflowasm_jac(idofK, jdofK, idofL, jdofL, ispec, jspec)
+					    if isoutflownode(edge, 1)
+					        _addnz(
+					            system.matrix,
+					            idofK,
+					            jdofK,
+					            1,
+					            +jac_outflow[ispec, jspec],
+					            edges[1].fac
+					        )
+					        _addnz(
+					            system.matrix,
+					            idofK,
+					            jdofL,
+					            1,
+					            jac_outflow[ispec, jspec+nspecies],
+					            edges[1].fac
+					        )
+					    end
 
-			        if isoutflownode(edge, 2)
-			            _addnz(
-			                system.matrix,
-			                idofL,
-			                jdofK,
-			                1,
-			                -jac_outflow[ispec, jspec],
-			                edges[1].fac
-			            )
-			            _addnz(
-			                system.matrix,
-			                idofL,
-			                jdofL,
-			                1,
-			                -jac_outflow[ispec, jspec+nspecies],
-			                edges[1].fac
-			            )
-			        end
-			    end
+					    if isoutflownode(edge, 2)
+					        _addnz(
+					            system.matrix,
+					            idofL,
+					            jdofK,
+					            1,
+					            -jac_outflow[ispec, jspec],
+					            edges[1].fac
+					        )
+					        _addnz(
+					            system.matrix,
+					            idofL,
+					            jdofL,
+					            1,
+					            -jac_outflow[ispec, jspec+nspecies],
+					            edges[1].fac
+					        )
+					    end
+					end
 
-			    @inline function outflowasm_param(idofK, idofL, ispec, iparam)
-			        jparam = 2 * nspecies + iparam
-			        if isoutflownode(edge, 1)
-			            dudp[iparam][ispec, idofK] += edges[1].fac * jac_outflow[ispec, jparam]
-			        end
-			        if isoutflownode(edge, 2)
-			            dudp[iparam][ispec, idofL] += edges[1].fac * jac_outflow[ispec, jparam]
-			        end
-			    end
+					@inline function outflowasm_param(idofK, idofL, ispec, iparam)
+					    jparam = 2 * nspecies + iparam
+					    if isoutflownode(edge, 1)
+					        dudp[iparam][ispec, idofK] += edges[1].fac * jac_outflow[ispec, jparam]
+					    end
+					    if isoutflownode(edge, 2)
+					        dudp[iparam][ispec, idofL] += edges[1].fac * jac_outflow[ispec, jparam]
+					    end
+					end
 
-			    assemble_res_jac_reordered(
-			        edges[1],
-			        system,
-			        outflowasm_res,
-			        outflowasm_jac,
-			        outflowasm_param,
-			        new_ind
-			    )
+					assemble_res_jac_reordered(
+					    edges[1],
+					    system,
+					    outflowasm_res,
+					    outflowasm_jac,
+					    outflowasm_param,
+					    new_ind
+					)
+				end
 			end
 		end
     end
@@ -695,6 +705,26 @@ function eval_and_assemble_part_para_ESMP(
         end
     end
 	
+	nballoc += @allocated begin
+		nnzCSC, nnzLNK = ExtendableSparseParallel.nnz_noflush(system.matrix)
+		if nnzCSC > 0 && nnzLNK > 0
+			VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(system.matrix; do_dense=false)
+			#sparse flush
+		elseif nnzCSC == 0 && nnzLNK > 0
+			VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(system.matrix; do_dense=true)
+			#dense flush
+		end 
+	end	
+	
+	#nnzCSC1, nnzLNK1 = ExtendableSparseParallel.nnz_noflush(system.matrix)
+	if detail_allocs
+		@info "$nodealloc $nodesepaalloc ($nodesepaass | $nodesepapre | $nodesepafct) $edgealloc"
+	end
+	#@info "pre-flush : nnzCSC $nnzCSC, nnzLNK $nnzLNK | post-flush: nnzCSC $nnzCSC1, nnzLNK $nnzLNK1"
+	
+	#@info system.matrix.cscmatrix.colptr[1:5]'
+	#@info system.matrix.cscmatrix.rowval[1:10]'
+	
 	#=
     noallocs(m::ExtendableSparseMatrix) = isnothing(m.lnkmatrix)
     noallocs(m::AbstractMatrix) = false
@@ -709,7 +739,10 @@ function eval_and_assemble_part_para_ESMP(
     =#
     _eval_and_assemble_generic_operator(system, U, F)
     _eval_and_assemble_inactive_species(system, U, UOld, F)
-
-    ncalloc, nballoc
+	ncalloc = nodealloc+nodesepaalloc+edgealloc
+    ncalloc, nballoc, 1
     
 end
+
+
+

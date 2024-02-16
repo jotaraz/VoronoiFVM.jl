@@ -494,7 +494,7 @@ function validate_ESMP(nm, nt, depth, do_init; test_vec=true)
 	
 	@info t1, t2, t3
 
-	CSC1, CSC2, CSC3, ESMP
+	CSC1, CSC2, CSC3, ESMP, ESM
 end
 
 

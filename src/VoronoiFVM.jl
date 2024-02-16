@@ -31,7 +31,8 @@ using Symbolics
 using Random
 using RecursiveFactorization
 
-include("/home/johannes/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
+#include("/home/johannes/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
+include("../../ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
 using .ExtendableSparseParallel
 
 
@@ -143,6 +144,9 @@ include("parallel/vfvm_assembly2.jl")
 include("parallel/vfvm_assembly3.jl")
 include("parallel/vfvm_assembly4.jl")
 include("parallel/vfvm_assemblydata2.jl")
+include("parallel/vfvm_solver_parallel.jl")
+include("parallel/vfvm_assembly_sepa.jl")
+include("parallel/vfvm_solver_part.jl")
 
 
 

@@ -693,6 +693,16 @@ function eval_and_assemble_part_ESMP(
         end
     end
 	
+	nnzCSC, nnzLNK = ExtendableSparseParallel.nnz_noflush(system.matrix)
+	
+	if nnzCSC > 0 && nnzLNK > 0
+		VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(system.matrix; do_dense=false)
+		#sparse flush
+	elseif nnzCSC == 0 && nnzLNK > 0
+		VoronoiFVM.ExtendableSparseParallel.ESMP_flush!(system.matrix; do_dense=true)
+		#dense flush
+	end 
+	
 	#=
     noallocs(m::ExtendableSparseMatrix) = isnothing(m.lnkmatrix)
     noallocs(m::AbstractMatrix) = false
@@ -708,5 +718,5 @@ function eval_and_assemble_part_ESMP(
     _eval_and_assemble_generic_operator(system, U, F)
     _eval_and_assemble_inactive_species(system, U, UOld, F)
 
-    ncalloc, nballoc
+    ncalloc, nballoc, 1
 end

@@ -22,6 +22,7 @@ Add value `v*fac` to matrix if `v` is nonzero
     end
 end
 
+#=
 @inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, v::Tv, fac) where {Tv}
     if isnan(v)
         error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
@@ -30,13 +31,34 @@ end
         ExtendableSparseParallel.rawupdateindex!(matrix, +, v * fac, i, j)
     end
 end
+=#
 
+@inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, v::Tv, fac) where {Tv}
+    if isnan(v)
+        error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
+    end
+    if v != zero(Tv)
+        ExtendableSparseParallel.addtoentry!(matrix, i, j, v*fac)
+    end
+end
+
+#=
 @inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, tid, v::Tv, fac) where {Tv}
     if isnan(v)
         error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
         ExtendableSparseParallel.rawupdateindex!(matrix, +, v * fac, i, j, tid)
+    end
+end
+=#
+
+@inline function _addnz(matrix::ExtendableSparseMatrixParallel, i, j, tid, v::Tv, fac) where {Tv}
+    if isnan(v)
+        error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
+    end
+    if v != zero(Tv)
+        ExtendableSparseParallel.addtoentry!(matrix, i, j, tid, v*fac) #rawupdateindex!(matrix, +, v * fac, i, j, tid)
     end
 end
 
@@ -511,7 +533,7 @@ function eval_and_assemble(
     _eval_and_assemble_generic_operator(system, U, F)
     _eval_and_assemble_inactive_species(system, U, UOld, F)
 
-    ncalloc, nballoc
+    ncalloc, nballoc, 1
 end
 
 """

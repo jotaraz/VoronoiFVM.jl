@@ -230,6 +230,8 @@ end
 
 canonical_matrix(A)=A
 canonical_matrix(A::ExtendableSparseMatrix)=SparseMatrixCSC(A)
+canonical_matrix(A::ExtendableSparseMatrixParallel)=A.cscmatrix
+
 
 function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
     if isnothing(system.linear_cache)

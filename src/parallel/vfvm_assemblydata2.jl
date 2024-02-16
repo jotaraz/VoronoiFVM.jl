@@ -280,9 +280,9 @@ See [`assemble_res_jac`](@ref) for more explanations.
     K = bnode.index
     for idof = firstnodedof(system, K):lastnodedof(system, K)
     	nidof = new_ind[idof]
-        ispec = getspecies(system, nidof)
+        ispec = getspecies(system, idof)
         if isnodespecies(system, ispec, K)
-            asm_res(idof, ispec)
+            asm_res(nidof, ispec)
             for jdof = firstnodedof(system, K):lastnodedof(system, K)
             	njdof = new_ind[jdof]
                 jspec = getspecies(system, jdof)
@@ -448,7 +448,7 @@ See [`assemble_res_jac`](@ref) for more explanations.
     end
 
     #for iparam = 1:(system.num_parameters)
-    #    asm_param(idofK, idofL, ispec, iparam)
+    #    asm_param(nidofK, nidofL, ispec, iparam)
     #end
 end
 

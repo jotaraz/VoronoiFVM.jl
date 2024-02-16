@@ -4,6 +4,14 @@
 #
 is_precompiling() = ccall(:jl_generating_output, Cint, ()) == 1
 
+
+
+
+
+
+
+
+
 """
 $(SIGNATURES)
 
@@ -18,10 +26,11 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
                           tstep,
                           embedparam,
                           params;
-                          called_from_API = false,) where {Tv, Tc, Ti, Tm}
+                          called_from_API = false, do_print_allocs=1, do_print_eaa=false) where {Tv, Tc, Ti, Tm}
     _complete!(system; create_newtonvectors = true)
     nlhistory = NewtonSolverHistory()
     tasm = 0.0
+    dtasm = 0.0
     tlinsolve = 0.0
     t = @elapsed begin
         solution .= oldsol
@@ -64,7 +73,7 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
         while niter <= control.maxiters
             # Create Jacobi matrix and RHS for Newton iteration
             try
-                tasm += @elapsed nca, nba, nev = eval_and_assemble(system,
+                dtasm = @elapsed nca, nba, nev = eval_and_assemble(system,
                                                                    solution,
                                                                    oldsol,
                                                                    residual,
@@ -73,6 +82,7 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
                                                                    embedparam,
                                                                    params;
                                                                    edge_cutoff = control.edge_cutoff,)
+                tasm += dtasm
                 ncalloc += nca
                 nballoc += nba
                 neval += nev
@@ -105,6 +115,9 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
 
             damp = min(damp * control.damp_growth, 1.0)
             norm = control.unorm(update)
+            if do_print_eaa
+            	@info "tasm $(round(dtasm, sigdigits=4)), time $time, niter $niter, norm $(round(norm, sigdigits=4))" 
+            end
             if tolx == 0.0
                 tolx = norm * control.reltol
             end
@@ -169,9 +182,15 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
         nlhistory.tasm = tasm
     end
 
-    if ncalloc + nballoc > 0 && doprint(control, 'a') && !is_precompiling()
-        @warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval)"
-    end
+    if do_print_allocs == 0
+	
+	elseif do_print_allocs == 1
+		if ncalloc + nballoc > 0 && doprint(control, 'a') && !is_precompiling()
+		    @warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval)"
+		end
+	else
+		@warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval)"
+	end
 
     if doprint(control, 'n') && !system.is_linear
         println("  [n]ewton: $(round(t,sigdigits=3)) seconds asm: $(round(100*tasm/t,sigdigits=3))%, linsolve: $(round(100*tlinsolve/t,sigdigits=3))%")
