@@ -255,7 +255,11 @@ canonical_matrix(A::ExtendableSparseMatrixParallel)=A.cscmatrix
 
 function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
     if isnothing(system.linear_cache)
-        Pl = control.precon_linear(canonical_matrix(A))
+        if typeof(control.precon_linear) == PILUAMPreconditioner
+            Pl = control.precon_linear(A)
+        else
+            Pl = control.precon_linear(canonical_matrix(A))
+        end
         nlhistory.nlu += 1
         p = LinearProblem(canonical_matrix(A), b)
         system.linear_cache = init(
@@ -271,9 +275,16 @@ function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
         system.linear_cache.b=b
         if control.keepcurrent_linear
             nlhistory.nlu += 1
-            system.linear_cache.Pl=control.precon_linear(canonical_matrix(A))
+            #system.linear_cache.Pl=control.precon_linear(canonical_matrix(A))
+            if typeof(control.precon_linear) == PILUAMPreconditioner
+                system.linear_cache.Pl = control.precon_linear(A)
+            else
+                system.linear_cache.Pl = control.precon_linear(canonical_matrix(A))
+            end
         end
     end
+
+	#@info system.linear_cache.alg, system.linear_cache.Pl
 
     try
         sol = LinearSolve.solve!(system.linear_cache)

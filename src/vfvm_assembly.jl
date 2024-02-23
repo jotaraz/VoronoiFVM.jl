@@ -38,7 +38,7 @@ end
         error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
-        ExtendableSparseParallel.addtoentry!(matrix, i, j, v*fac)
+        ExtendableSparse.addtoentry!(matrix, i, j, v*fac)
     end
 end
 
@@ -58,7 +58,7 @@ end
         error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
-        ExtendableSparseParallel.addtoentry!(matrix, i, j, tid, v*fac) #rawupdateindex!(matrix, +, v * fac, i, j, tid)
+        ExtendableSparse.addtoentry!(matrix, i, j, tid, v*fac) #rawupdateindex!(matrix, +, v * fac, i, j, tid)
     end
 end
 

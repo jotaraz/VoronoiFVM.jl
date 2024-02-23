@@ -196,9 +196,8 @@ function main(; n = 11, nspec = 5,
     control.maxiters = 500
     @info control.method_linear
     t = @elapsed (u = solve(sys; verbose, control, log = true))
-    @warn "Time: $t"
     @show norm(u)
-    norm(u)
+    norm(u), t
 end
 
 using Test

@@ -40,7 +40,7 @@ function example3(nm; verbose = false, unknown_storage = :sparse,
               method_linear = nothing, assembly = :cellwise,
               precon_linear = A -> VoronoiFVM.Identity(), do_init = true)
     
-    grid = VoronoiFVM.ExtendableSparse.getgrid(nm)
+    grid = VoronoiFVM.ExtendableSparseParallel.getgrid(nm)
 
     physics = VoronoiFVM.Physics(; reaction = reaction,
 								   flux = flux,
@@ -197,12 +197,12 @@ function example3_ESMP_part_para(nm, nt, depth; verbose = false, unknown_storage
     
     t1 = @elapsed (na1 = VoronoiFVM.eval_and_assemble_part_para_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5)) #control.edge_cutoff)
     
-    @info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t1, na1
+    @info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t1, na1
 	
 	t2 = @elapsed (na2 = VoronoiFVM.eval_and_assemble_part_para_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5))
 	
 	
-    @info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t2, na2
+    @info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t2, na2
 	
 	sys.matrix, residual, (t1, t2), (na1, na2)
 end
@@ -244,12 +244,12 @@ function example3_ESMP_part_para_wrappedfcts(nm, nt, depth; verbose = false, unk
     
     t1 = @elapsed (na1 = VoronoiFVM.eval_and_assemble_part_para_ESMP_fcts(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5, detail_allocs)) #control.edge_cutoff)
     
-    @info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t1, na1
+    @info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t1, na1
 	
 	t2 = @elapsed (na2 = VoronoiFVM.eval_and_assemble_part_para_ESMP_fcts(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5, detail_allocs))
 	
 	
-    @info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t2, na2
+    @info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t2, na2
 	
 	sys.matrix, residual, (t1, t2), (na1, na2)
 end
@@ -317,7 +317,7 @@ function bm_example3_ESMP_part_para(nm, nt, depth; verbose = false, unknown_stor
 		t1 = @elapsed (na1 = VoronoiFVM.eval_and_assemble_part_para_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5)) #control.edge_cutoff)
 		
 		if detail_allocs
-			@info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t1, na1
+			@info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t1, na1
 		end
 		
 		t2 = @elapsed (na2 = VoronoiFVM.eval_and_assemble_part_para_ESMP(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5))
@@ -326,7 +326,7 @@ function bm_example3_ESMP_part_para(nm, nt, depth; verbose = false, unknown_stor
 		T2 = min(T2, t2)
 		
 		if detail_allocs
-			@info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t2, na2
+			@info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t2, na2
 		end
     end
 	
@@ -380,7 +380,7 @@ function bm_example3_ESMP_part_para_wrappedfcts(nm, nt, depth; verbose = false, 
 		t1 = @elapsed (na1 = VoronoiFVM.eval_and_assemble_part_para_ESMP_fcts(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5, detail_allocs)) #control.edge_cutoff)
 		
 		if detail_allocs
-			@info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t1, na1
+			@info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t1, na1
 		end
 		
 		t2 = @elapsed (na2 = VoronoiFVM.eval_and_assemble_part_para_ESMP_fcts(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5, detail_allocs))
@@ -389,68 +389,7 @@ function bm_example3_ESMP_part_para_wrappedfcts(nm, nt, depth; verbose = false, 
 		T2 = min(T2, t2)
 		
 		if detail_allocs
-			@info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t2, na2
-		end
-	end
-	
-	sys.matrix, (T1, T2), (na1, na2)
-end
-
-
-function bm_example3_ESMP_part_para_wrappedfcts2(nm, nt, depth; verbose = false, unknown_storage = :sparse,
-              method_linear = nothing, assembly = :cellwise,
-              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, detail_allocs=true, num=5)
-    
-    physics = VoronoiFVM.Physics(; reaction = reaction,
-								   flux = flux,
-								   source = source, 
-								   storage = storage)
-								   
-    sys = VoronoiFVM.ParallelSystem(Float64, Float64, Int32, Int64, nm, nt, depth; unknown_storage, species = [1])
-    
-	physics!(sys, physics)
-    # enable_species!(sys, 1, [1])
-
-    boundary_dirichlet!(sys, 1, 2, 0.1)
-    boundary_dirichlet!(sys, 1, 4, 0.1)
-
-	VoronoiFVM._complete_nomatrix!(sys; create_newtonvectors = true)
-    
-    T1 = 100.0 #zeros(num)
-    T2 = 100.0 #zeros(num)
-    na1 = 0
-    na2 = 0
-    
-	for i=1:num
-		inival = unknowns(sys)
-		inival .= 0.5
-
-		solution = unknowns(sys)
-		oldsol = inival
-		
-		
-		solution .= oldsol
-		
-		residual = sys.residual
-		update = sys.update
-		
-		if do_init
-			VoronoiFVM._initialize!(solution, sys; time=0.0, λ = 0.0, params=zeros(0))
-		end
-		
-		t1 = @elapsed (na1 = VoronoiFVM.eval_and_assemble_part_para_ESMP_fcts2(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5, detail_allocs)) #control.edge_cutoff)
-		
-		if detail_allocs
-			@info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t1, na1
-		end
-		
-		t2 = @elapsed (na2 = VoronoiFVM.eval_and_assemble_part_para_ESMP_fcts2(sys, solution, oldsol, residual, 0.0, 0.01, 0.0, zeros(0); edge_cutoff = 1e-5, detail_allocs))
-		
-		T1 = min(T1, t1)
-		T2 = min(T2, t2)
-		
-		if detail_allocs
-			@info VoronoiFVM.ExtendableSparse.nnz_noflush(sys.matrix), t2, na2
+			@info VoronoiFVM.ExtendableSparseParallel.nnz_noflush(sys.matrix), t2, na2
 		end
 	end
 	
@@ -538,11 +477,6 @@ function benchmark_ESMP_2(nm, nt, depth, do_init; test_vec=true, detail_allocs=t
 	ESMP2,t4,n4   = bm_example3_ESMP_part_para_wrappedfcts(nm, nt, depth; do_init=do_init, detail_allocs, num)
 	CSC4     = ESMP2.cscmatrix
 	
-	
-	@info "Wrapped fcts"
-	ESMP2,t6,n6   = bm_example3_ESMP_part_para_wrappedfcts2(nm, nt, depth; do_init=do_init, detail_allocs, num)
-	CSC4     = ESMP2.cscmatrix
-	
 	@info "Old Part Para"
 	ESMP3,t5,n5   = bm_example3_ESMP_part_para(nm, nt, depth; do_init=do_init, detail_allocs, num)
 	CSC5             = ESMP3.cscmatrix
@@ -557,10 +491,6 @@ function benchmark_ESMP_2(nm, nt, depth, do_init; test_vec=true, detail_allocs=t
 		vr4 = reorder(CSC4*br, ESMP2.rev_new_indices)
 		vr5 = reorder(CSC5*br, ESMP3.rev_new_indices)
 		
-		#@warn "Differences in RHS"
-		#@info "max diff 4: ", maximum(abs.(r1-rr4))
-		#@info "max diff 5: ", maximum(abs.(r1-rr5))
-		
 		@warn "Differences in Matrix"
 		@info "max diff 4: ", maximum(abs.(v-vr4))
 		@info "max diff 5: ", maximum(abs.(v-vr5))
@@ -568,13 +498,11 @@ function benchmark_ESMP_2(nm, nt, depth, do_init; test_vec=true, detail_allocs=t
 	
 	@warn "Times:"
 	@info "Old Seq: ", t1
-	@info "wrap th: ", t4
-	@info "wrap no: ", t6
+	@info "New Seq: ", t4
 	@info "New Par: ", t5
 	@warn "Allocations:"
 	@info "Old Seq: ", n1
-	@info "wrap th: ", n4
-	@info "wrap no: ", n6
+	@info "New Seq: ", n4
 	@info "New Par: ", n5
 	
 

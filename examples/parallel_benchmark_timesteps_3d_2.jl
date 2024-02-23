@@ -6,20 +6,22 @@
 #https://github.com/j-fu/VoronoiFVM.jl/blob/7039d768ba26e80dbb1aa4fabcce5993486561a4/examples/Example207_NonlinearPoisson2D.jl
 
 using PyPlot, GridVisualize, ExtendableGrids
-
+using LinearSolve
 
 function reaction(f, u, node)
 	f[1] = u[1]^2
 end
 
 function flux(f, u, edge)
-	f[1] = 1e-2 * (u[1, 1]^2 - u[1, 2]^2)
+	f[1] = u[1, 1] - u[1, 2] #1e-2 * (u[1, 1]^2 - u[1, 2]^2)
 end
 
 function source(f, node)
 	x1 = node[1] - 0.5
 	x2 = node[2] - 0.5
-    f[1] = exp(-20.0 * (x1^2 + x2^2))
+	x3 = node[3] - 0.5
+	f[1] = x1 * sin(5.0 * x2) * exp(x3)
+    #f[1] = exp(-20.0 * (x1^2 + x2^2 + x3^2))
 end
 
 function storage(f, u, node)
@@ -27,9 +29,9 @@ function storage(f, u, node)
 end
 
 function example_time_normal(nm, dt, tpoints; verbose = false, unknown_storage = :sparse,
-              method_linear = nothing, assembly = :cellwise,
-              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, do_print_ts=true)
-    grid = VoronoiFVM.ExtendableSparseParallel.getgrid(nm)
+              method_linear = KrylovJL_GMRES(), assembly = :cellwise,
+              precon_linear = VoronoiFVM.ILUZeroPreconditioner(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, do_print_ts=true)
+    grid = VoronoiFVM.ExtendableSparse.getgrid(nm)
 
     physics = VoronoiFVM.Physics(; reaction = reaction,
 								   flux = flux,
@@ -82,9 +84,69 @@ function example_time_normal(nm, dt, tpoints; verbose = false, unknown_storage =
 	sols
 end
 
+
+function example_time_normal_precon(nm, dt, tpoints; verbose = false, unknown_storage = :sparse,
+    method_linear = KrylovJL_GMRES(), assembly = :cellwise,
+    precon_linear = VoronoiFVM.ILUZeroPreconditioner(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, do_print_ts=true, strat=VoronoiFVM.DirectSolver(VoronoiFVM.UMFPACKFactorization()))
+    grid = VoronoiFVM.ExtendableSparse.getgrid(nm)
+
+    physics = VoronoiFVM.Physics(; reaction = reaction,
+								   flux = flux,
+								   source = source, 
+								   storage = storage)
+	
+    sys = VoronoiFVM.System(grid, physics; unknown_storage, assembly = assembly)
+    enable_species!(sys, 1, [1])
+
+    boundary_dirichlet!(sys, 1, 2, 0.1)
+    boundary_dirichlet!(sys, 1, 4, 0.1)
+
+    oldsol = unknowns(sys)
+    oldsol .= 0.5
+    solution = unknowns(sys)
+    
+    #control = VoronoiFVM.NewtonControl()
+    #control.verbose = verbose
+    #control.reltol_linear = 1.0e-5
+    #control.method_linear = method_linear
+    #control.precon_linear = precon_linear
+    
+    control = SolverControl(strat, sys)
+    control.log = true
+    
+    time = 0.0
+    empedparam = 0.0
+    params = zeros(0)
+    
+    sols = [zeros(num_nodes(grid)) for i=1:tpoints+1]
+    sols[1] = copy(oldsol[1,:])
+    
+    if do_plot
+    	p = GridVisualizer(;Plotter=PyPlot)
+    end
+    for i=1:tpoints
+    	all = @allocated (t = @elapsed VoronoiFVM._solve_timestep!(solution, oldsol, sys, control, time, dt, empedparam, params; do_print_allocs, do_print_eaa))
+    	tasm = sys.history.tasm
+    	tlin = sys.history.tlinsolve
+    	if do_print_ts
+	    	@info ">>> Timestep $i | Runtime $(round(t, sigdigits=4)) | Ass.time $(round(tasm, sigdigits=4)) | Run-Ass $(round(t-tasm, sigdigits=4)) | LinSolveTime $(round(tlin, sigdigits=4)) | Allocs $all"
+    	end
+    	time += dt	
+    	oldsol .= solution
+    	sols[i+1] = copy(oldsol[1,:])
+    	
+    	if do_plot
+    		scalarplot!(p[1, 1], grid, sols[i+1]; Plotter = PyPlot, clear = true, show = true, title="$time")
+    	end
+    end
+	
+	
+	sols
+end
+
 function example_time_part(nm, dt, tpoints, nt; depth=2, verbose=false, unknown_storage=:sparse,
-              method_linear = nothing, assembly = :cellwise,
-              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, do_print_ts=true)
+    method_linear = KrylovJL_GMRES(), assembly = :cellwise,
+    precon_linear = VoronoiFVM.ILUZeroPreconditioner(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, do_print_ts=true)
     
     physics = VoronoiFVM.Physics(; reaction = reaction,
 								   flux = flux,
@@ -138,8 +200,8 @@ function example_time_part(nm, dt, tpoints, nt; depth=2, verbose=false, unknown_
 end
 
 function example_time_part_para(nm, dt, tpoints, nt; depth=2, verbose=false, unknown_storage=:sparse,
-              method_linear = nothing, assembly = :cellwise,
-              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true)
+    method_linear = KrylovJL_GMRES(), assembly = :cellwise,
+    precon_linear = VoronoiFVM.ILUZeroPreconditioner(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true)
     
     physics = VoronoiFVM.Physics(; reaction = reaction,
 								   flux = flux,
@@ -197,8 +259,8 @@ function example_time_part_para(nm, dt, tpoints, nt; depth=2, verbose=false, unk
 end
 
 function example_time_part_para_outside(nm, dt, tpoints, nt; depth=2, verbose=false, unknown_storage=:sparse,
-              method_linear = nothing, assembly = :cellwise,
-              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true)
+    method_linear = KrylovJL_GMRES(), assembly = :cellwise,
+    precon_linear = VoronoiFVM.ILUZeroPreconditioner(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true)
     
     physics = VoronoiFVM.Physics(; reaction = reaction,
 								   flux = flux,
@@ -259,15 +321,33 @@ end
 
 
 
-function validate_timesteps(nm, nt, depth, dt; tpoints=5, do_print_allocs=0, do_print_eaa=false, do_print_ts=false, do_part=true)
+function validate_timesteps(nm, nt, depth, dt; tpoints=5, do_print_allocs=0, do_print_eaa=true, do_print_ts=false, do_part=true, precon_linear=nothing, method_linear=nothing)
+    dim = length(nm)
+    if method_linear == nothing
+        if dim==2
+        method_linear = UMFPACKFactorization()
+        elseif dim==3
+            method_linear = KrylovJL_GMRES()
+        end
+    end
+    if precon_linear == nothing
+        if dim==2
+            method_linear = A -> VoronoiFVM.Identity()
+        elseif dim==3
+            precon_linear = VoronoiFVM.ILUZeroPreconditioner()
+        end
+        
+    end
+
+
 	@info "Computing normal solution"
-	sols_normal    = example_time_normal(   nm, dt, tpoints;            do_plot=false, do_print_allocs, do_print_eaa, do_print_ts)
+	sols_normal    = example_time_normal(   nm, dt, tpoints;            do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, method_linear, precon_linear)
 	if do_part
 	@info "Computing partitioned solution"
-	sols_part      = example_time_part(     nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts)
+	sols_part      = example_time_part(     nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, method_linear, precon_linear)
 	end
 	@info "Computing parallelized solution"
-	sols_part_para = example_time_part_para(nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, detail_allocs=false)
+	sols_part_para = example_time_part_para(nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, detail_allocs=false, method_linear, precon_linear)
 	
 	
 	if do_part

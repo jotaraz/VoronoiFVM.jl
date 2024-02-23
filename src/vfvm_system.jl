@@ -50,7 +50,7 @@ mutable struct System{Tv, Tc, Ti, Tm, TSpecMat <: AbstractMatrix, TSolArray <: A
     """
     Jacobi matrix for nonlinear problem
     """
-    matrix::Union{ExtendableSparseParallel.ExtendableSparseMatrixParallel{Tv, Tm}, 
+    matrix::Union{ExtendableSparse.ExtendableSparseMatrixParallel{Tv, Tm}, 
     			  ExtendableSparseMatrix{Tv, Tm},
                   Tridiagonal{Tv, Vector{Tv}},
                   #                  MultidiagonalMatrix,
@@ -340,7 +340,7 @@ function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
     
     csc = spzeros(Tv, Tm, num_nodes(grid), num_nodes(grid))
 	lnk = [SuperSparseMatrixLNK{Tv, Tm}(num_nodes(grid), nnts[tid]) for tid=1:nt]
-	system.matrix = ExtendableSparseMatrixParallel{Tv, Tm}(csc, lnk, grid, nnts, s, onr, cfp, gi, ni, rni, starts, cellparts, nt, depth)
+	system.matrix = ExtendableSparseMatrixParallel{Tv, Tm}(csc, lnk, grid, nnts, s, onr, cfp, gi, ni, rni, starts, cellparts, nt, depth, 0, csc.n, csc.m)
     
     return system
 end

@@ -67,6 +67,7 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
         tolx = 0.0
         ncalloc = 0
         nballoc = 0
+        nlinsolve = 0
         neval = 0
         niter = 1
 
@@ -95,13 +96,13 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
                 end
             end
 
-            tlinsolve += @elapsed _solve_linear!(values(update),
+            nlinsolve += @allocated (tlinsolve += @elapsed _solve_linear!(values(update),
                                                  system,
                                                  nlhistory,
                                                  control,
                                                  method_linear,
                                                  system.matrix,
-                                                 values(residual))
+                                                 values(residual)))
 
             values(solution) .-= damp * values(update)
 
@@ -186,10 +187,10 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
 	
 	elseif do_print_allocs == 1
 		if ncalloc + nballoc > 0 && doprint(control, 'a') && !is_precompiling()
-		    @warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval)"
+		    @warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval), linsolve $(nlinsolve÷neval) | $neval"
 		end
 	else
-		@warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval)"
+		@warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval), linsolve $(nlinsolve÷neval) | $neval"
 	end
 
     if doprint(control, 'n') && !system.is_linear

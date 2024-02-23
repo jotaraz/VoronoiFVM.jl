@@ -22,7 +22,16 @@ using DiffResults
 using JLD2
 using RecursiveArrayTools
 
+#include("/home/johannes/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
+#include("../../ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
+#include("../../ExtendableSparse.jl/src/ExtendableSparse.jl")
+#include("/home/johannes/Downloads/ExtendableSparse.jl-master(2)/ExtendableSparse.jl-master/src/ExtendableSparse.jl")
+#using .ExtendableSparseParallel
+
 using ExtendableSparse
+
+#import ExtendableSparse.update!
+
 using ExtendableGrids
 
 using StaticArrays
@@ -31,9 +40,7 @@ using Symbolics
 using Random
 using RecursiveFactorization
 
-#include("/home/johannes/Nextcloud/Documents/Uni/VIII/WIAS/juliaCode(anfang)/para/ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
-include("../../ExtendableSparseParallel/src/ESMP/ExtendableSparseParallel.jl")
-using .ExtendableSparseParallel
+
 
 
 
@@ -148,6 +155,8 @@ export plothistory
 include("parallel/vfvm_assembly2.jl")
 include("parallel/vfvm_assembly3.jl")
 include("parallel/vfvm_assembly4.jl")
+include("parallel/vfvm_assembly4_wrap.jl")
+include("parallel/vfvm_assembly4_fcts.jl")
 include("parallel/vfvm_assemblydata2.jl")
 include("parallel/vfvm_solver_parallel.jl")
 include("parallel/vfvm_assembly_sepa.jl")
