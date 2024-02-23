@@ -13,7 +13,7 @@ function reaction(f, u, node)
 end
 
 function flux(f, u, edge)
-	f[1] = u[1, 1] - u[1, 2] #1e-2 * (u[1, 1]^2 - u[1, 2]^2)
+	f[1] = u[1, 1]^2 - u[1, 2]^2 #1e-2 * (u[1, 1]^2 - u[1, 2]^2)
 end
 
 function source(f, node)
@@ -321,7 +321,7 @@ end
 
 
 
-function validate_timesteps(nm, nt, depth, dt; tpoints=5, do_print_allocs=0, do_print_eaa=true, do_print_ts=false, do_part=true, precon_linear=nothing, method_linear=nothing)
+function validate_timesteps(nm, nt, depth, dt; tpoints=3, do_print_allocs=0, do_print_eaa=true, do_print_ts=false, do_part=true, precon_linear=nothing, method_linear=nothing)
     dim = length(nm)
     if method_linear == nothing
         if dim==2

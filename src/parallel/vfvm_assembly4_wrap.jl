@@ -73,11 +73,11 @@ function eval_and_assemble_part_para_ESMP_fcts(
     outflow_evaluators = [ResJacEvaluator(physics, :boutflow, UKLs[i], edges[i], nspecies) for i=1:nt]
     
     
-    
+    leveltimes = zeros(depth+2)
 	nodealloc = zeros(Int64, nt)
 	nodealloc2 = zeros(Int64, nt)
 	for level=1:depth
-		@threads for tid=1:nt
+		leveltimes[level] = @elapsed @threads for tid=1:nt
 			n = node_asm_count!(
 				system, nodes[tid], UKs[tid], UKOlds[tid], src_evaluators[tid], rea_evaluators[tid], stor_evaluators[tid], oldstor_evaluators[tid],
 				cfp[(level-1)*nt+tid], U, UOld, tid, nspecies, tstepinv, F, dudp, new_ind
@@ -92,7 +92,7 @@ function eval_and_assemble_part_para_ESMP_fcts(
 	end
 	
 	nodesepaalloc = 0
-	@threads for tid=1:1
+	leveltimes[depth+1] = @elapsed @threads for tid=1:1
     nodesepaalloc += @allocated node_asm!(
 				system, nodes[1], UKs[1], UKOlds[1], src_evaluators[1], rea_evaluators[1], stor_evaluators[1], oldstor_evaluators[1],
 				cfp[depth*nt+1], U, UOld, 1, nspecies, tstepinv, F, dudp, new_ind
@@ -107,7 +107,7 @@ function eval_and_assemble_part_para_ESMP_fcts(
     edgealloc = zeros(Int64, nt) #@allocated begin
     edgealloc2 = zeros(Int64, nt)
 	for level=1:depth
-		@threads for tid=1:nt
+		leveltimes[level] += @elapsed @threads for tid=1:nt
 			n = edge_asm_count!(
 				system, edges[tid], UKLs[tid], flux_evaluators[tid], erea_evaluators[tid], outflow_evaluators[tid],
 				cfp[(level-1)*nt+tid], U, tid, nspecies, tstepinv, F, dudp, new_ind
@@ -123,7 +123,7 @@ function eval_and_assemble_part_para_ESMP_fcts(
     	end
     end
     
-    @threads for tid=1:1
+    leveltimes[depth+1] += @elapsed @threads for tid=1:1
     edgealloc[1] += @allocated edge_asm!(
 				system, edges[1], UKLs[1], flux_evaluators[1], erea_evaluators[1], outflow_evaluators[1],
 				cfp[depth*nt+1], U, 1, nspecies, tstepinv, F, dudp, new_ind
@@ -148,10 +148,12 @@ function eval_and_assemble_part_para_ESMP_fcts(
 	
 
     nballoc = 0
-    nballoc += @allocated bnode_asm!(bnode, system, UKs[1], has_legacy_bc, bsrc_evaluator, brea_evaluator, bstor_evaluator, oldbstor_evaluator, U, UOld, boundary_factors, boundary_values, F, dudp, nspecies, new_ind)
-	
-	if isnontrivial(bflux_evaluator)
-        nballoc += @allocated bedge_asm!(bedge, system, UKLs[1], bflux_evaluator, U, F, dudp, nspecies, new_ind)
+	leveltimes[depth+2] = @elapsed begin
+		nballoc += @allocated bnode_asm!(bnode, system, UKs[1], has_legacy_bc, bsrc_evaluator, brea_evaluator, bstor_evaluator, oldbstor_evaluator, U, UOld, boundary_factors, boundary_values, F, dudp, nspecies, new_ind)
+		
+		if isnontrivial(bflux_evaluator)
+			nballoc += @allocated bedge_asm!(bedge, system, UKLs[1], bflux_evaluator, U, F, dudp, nspecies, new_ind)
+		end
 	end
 	
 	
@@ -211,6 +213,7 @@ function eval_and_assemble_part_para_ESMP_fcts(
 	
 	#nnzCSC1, nnzLNK1 = ExtendableSparse.nnz_noflush(system.matrix)
 	if detail_allocs
+		print_level_times(leveltimes)
 		@info "pre-flush : nnzCSC $nnzCSC, nnzLNK $nnzLNK"
 		#@info "$nodealloc_sum $nodesepaalloc $edgealloc_sum"
 		#@info "$nodealloc_sum $nodesepaalloc ($nodesepaass | $nodesepapre | $nodesepafct) $edgealloc_sum"
@@ -239,6 +242,18 @@ function eval_and_assemble_part_para_ESMP_fcts(
     
 end
 
+function print_level_times(x)
+	depth = length(x)-2
+
+	s = ""
+	for i=1:depth
+		s = s*"L$i: $(round(x[i],digits=3)), "
+	end
+	s = s*"Sepa: $(round(x[depth+1],digits=3)), "
+	s = s*"Bnd.: $(round(x[depth+2],digits=3)), "
+
+	@info s
+end
 
 
 function eval_and_assemble_part_para_ESMP_fcts2(
