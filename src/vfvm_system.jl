@@ -298,6 +298,8 @@ function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
                 matrixtype = :sparse,
                 is_linear = false,
                 nparams = 0,
+                print_prep=false,
+                check_partition=false,
                 kwargs...)
     #Tv = valuetype
     #Tc = coord_type(grid)
@@ -313,7 +315,7 @@ function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
         throw("specify either unknown_storage=:dense  or unknown_storage=:sparse")
     end
     
-    grid, nnts, s, onr, cfp, gi, gc, ni, rni, starts, cellparts = preparatory_multi_ps_less_reverse(nm, nt, depth, Tm)
+    grid, nnts, s, onr, cfp, gi, gc, ni, rni, starts, cellparts, depth = preparatory_multi_ps_less_reverse(nm, nt, depth, Tm; do_print=print_prep, check_partition)
     
     #system.matrix = ExtendableSparseParallel.ExtendableSparseMatrixParallel{Tv, Tm}(nm, nt, depth)
 

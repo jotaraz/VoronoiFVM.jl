@@ -166,7 +166,8 @@ end
 
 function example_time_part_para(nm, dt, tpoints, nt; depth=2, verbose=false, unknown_storage=:sparse,
               method_linear = nothing, assembly = :cellwise,
-              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, do_plot = true, do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true)
+              precon_linear = A -> VoronoiFVM.Identity(), do_init = true, do_plot = true, do_print_allocs=1, 
+              do_print_eaa=false, detail_allocs=false, do_print_ts=true, print_prep=false, check_partition=false)
     
     dim = length(nm)
     if dim == 2
@@ -182,7 +183,7 @@ function example_time_part_para(nm, dt, tpoints, nt; depth=2, verbose=false, unk
     end
 
 	
-	sys = VoronoiFVM.ParallelSystem(Float64, Float64, Int32, Int64, nm, nt, depth; species = [1])
+	sys = VoronoiFVM.ParallelSystem(Float64, Float64, Int32, Int64, nm, nt, depth; species = [1], print_prep, check_partition)
     physics!(sys, physics)
     grid = sys.grid
     
@@ -207,7 +208,7 @@ function example_time_part_para(nm, dt, tpoints, nt; depth=2, verbose=false, unk
     sols[1] = copy(oldsol[1,:])
 
     if do_print_ts
-    	@info "How many cells per partition on each level:", [length(sys.matrix.cellsforpart[(i-1)*nt+1]) for i=1:depth+1]	
+    	@info "How many cells per partition on each level:", [length(sys.matrix.cellsforpart[(i-1)*nt+1]) for i=1:sys.matrix.depth+1]	
     end
     
     if do_plot
@@ -365,8 +366,12 @@ end
 
 #-----------------------------------
 
-function validate_timesteps(nm, nt, depth, dt; tpoints=3, do_print_allocs=0, do_print_eaa=false, do_print_ts=true, do_part=false, precon_linear=nothing, method_linear=nothing, detail_allocs=false)
-	dim = length(nm)
+function validate_timesteps(
+    nm, nt, depth, dt; 
+    tpoints=3, do_print_allocs=0, do_print_eaa=false, do_print_ts=true, precon_linear=nothing, method_linear=nothing, 
+    detail_allocs=false, print_prep=false, check_partition=false)
+
+	#dim = length(nm)
     if method_linear === nothing
         method_linear = KrylovJL_GMRES()
     end
@@ -381,22 +386,22 @@ function validate_timesteps(nm, nt, depth, dt; tpoints=3, do_print_allocs=0, do_
     else
         sols_normal    = example_time_normal(   nm, dt, tpoints;            do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, method_linear, precon_linear)
 	end
-    if do_part
-	    @info "Computing partitioned solution"
-	    sols_part      = example_time_part(     nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, method_linear, precon_linear)
-	end
+    #if do_part
+	#    @info "Computing partitioned solution"
+	#    sols_part      = example_time_part(     nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, method_linear, precon_linear)
+	#end
 	@info "Computing parallelized solution"
-	sols_part_para = example_time_part_para(nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, detail_allocs, method_linear, precon_linear)
+	sols_part_para = example_time_part_para(nm, dt, tpoints, nt; depth, do_plot=false, do_print_allocs, do_print_eaa, do_print_ts, detail_allocs, method_linear, precon_linear, print_prep, check_partition)
 	
 	
-	if do_part
-		d1 = absmax_entry_vecvec(sols_normal - sols_part)
-		d2 = absmax_entry_vecvec(sols_normal - sols_part_para)
-		return d1, d2
-	else
-		d2 = absmax_entry_vecvec(sols_normal - sols_part_para)
-		return d2
-	end
+	#if do_part
+	#	d1 = absmax_entry_vecvec(sols_normal - sols_part)
+	#	d2 = absmax_entry_vecvec(sols_normal - sols_part_para)
+	#	return d1, d2
+	#else
+	d2 = absmax_entry_vecvec(sols_normal - sols_part_para)
+	return d2
+	#end
 end
 
 function absmax_entry_vecvec(A)
