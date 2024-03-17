@@ -152,17 +152,19 @@ include("gridvisualize.jl")
 export plothistory
 #include("precompile.jl")
 
-include("parallel/vfvm_assembly2.jl")
-include("parallel/vfvm_assembly3.jl")
-include("parallel/vfvm_assembly4.jl")
+#include("parallel/vfvm_assembly2.jl")
+#include("parallel/vfvm_assembly3.jl")
+#include("parallel/vfvm_assembly4.jl")
 include("parallel/vfvm_assembly4_wrap.jl")
 include("parallel/vfvm_assembly4_fcts.jl")
 include("parallel/vfvm_assemblydata2.jl")
 include("parallel/vfvm_solver_parallel.jl")
-include("parallel/vfvm_assembly_sepa.jl")
-include("parallel/vfvm_solver_part.jl")
+#include("parallel/vfvm_assembly_sepa.jl")
+#include("parallel/vfvm_solver_part.jl")
+#include("parallel/matvec_par.jl")
 
-
+#include("parallel/GMRES_time.jl")
+#export KrylovJL_GMRES_time
 
 
 end

@@ -255,13 +255,20 @@ canonical_matrix(A::ExtendableSparseMatrixParallel)=A.cscmatrix
 
 function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
     if isnothing(system.linear_cache)
+        
         if typeof(control.precon_linear) == PILUAMPreconditioner
             Pl = control.precon_linear(A)
         else
             Pl = control.precon_linear(canonical_matrix(A))
         end
         nlhistory.nlu += 1
-        p = LinearProblem(canonical_matrix(A), b)
+        if typeof(A) == ExtendableSparseMatrixParallel{Float64, Int64}
+            #@info "exciting"
+            p = LinearProblem(A, b)
+        else
+            #@info "boring"
+            p = LinearProblem(canonical_matrix(A), b)
+        end
         system.linear_cache = init(
             p,
             method_linear;
@@ -271,7 +278,14 @@ function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
             Pl,
         )
     else
-        system.linear_cache.A=canonical_matrix(A)
+        #system.linear_cache.A=canonical_matrix(A)
+        if typeof(A) == ExtendableSparseMatrixParallel{Float64, Int64}
+            #@info "exciting2"
+            system.linear_cache.A=A
+        else
+            #@info "boring2"
+            system.linear_cache.A=canonical_matrix(A)
+        end
         system.linear_cache.b=b
         if control.keepcurrent_linear
             nlhistory.nlu += 1

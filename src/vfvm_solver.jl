@@ -190,7 +190,7 @@ function _solve_timestep!(solution::AbstractMatrix{Tv}, # old time step solution
 		    @warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval), linsolve $(nlinsolve÷neval) | $neval"
 		end
 	else
-		@warn "[a]llocations in assembly loop: cells: $(ncalloc÷neval), bfaces: $(nballoc÷neval), linsolve $(nlinsolve÷neval) | $neval"
+		@warn "[a]llocations in assembly loop: cells: $(ncalloc), bfaces: $(nballoc), linsolve $(nlinsolve) | $neval"
 	end
 
     if doprint(control, 'n') && !system.is_linear
