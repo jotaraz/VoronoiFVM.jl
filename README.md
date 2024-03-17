@@ -11,6 +11,26 @@ VoronoiFVM.jl
 Solver for coupled nonlinear partial differential equations (elliptic-parabolic conservation laws) based on the Voronoi finite volume method.
 It uses automatic differentiation via [ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl) and [DiffResults.jl](https://github.com/JuliaDiff/DiffResults.jl) to evaluate user functions along with their jacobians and calculate derivatives of solutions with respect to their parameters.
 
+## Parallel branch
+
+Idea: Do assembly of the system matrix and the solving of the system of linear equations on multiple threads parallel.
+
+How to: Navigate to the "VoronoiFVM" directory (make sure that the parallel branch of [ExtendableSparse.jl](https://github.com/jotaraz/VoronoiFVM.jl/tree/parallel) is used) and open the Julia REPL with multiple threads, e.g. for 8 threads:
+
+```
+$ julia -t 8
+julia> include("examples/Example_parallel.jl")
+julia> using .Example_parallel
+julia> Example_parallel.benchmark_one((100,100,100), 0, 1); # solving a PDE system on a 100x100x100 grid with 1 thread and ILUZero.jl
+[ Info: >>> Timestep 1 | Runtime 37.47 | Ass.time 36.53 | Run-Ass 0.9342 | LinSolveTime 0.7191 | Allocs 1771317040
+[ Info: >>> Timestep 2 | Runtime 29.37 | Ass.time 28.75 | Run-Ass 0.617 | LinSolveTime 0.5072 | Allocs 1022194464
+[ Info: >>> Timestep 3 | Runtime 28.87 | Ass.time 28.25 | Run-Ass 0.6191 | LinSolveTime 0.511 | Allocs 1014160768
+julia> Example_parallel.benchmark_one((100,100,100), 8, 3); # solving a PDE system on a 100x100x100 grid with 8 threads and parallel ILU decomposition
+[ Info: >>> Timestep 1 | Runtime 84.05 | Ass.time 81.41 | Run-Ass 2.643 | LinSolveTime 2.447 | Allocs 2630868184
+[ Info: >>> Timestep 2 | Runtime 65.54 | Ass.time 64.18 | Run-Ass 1.356 | LinSolveTime 1.267 | Allocs 813212576
+[ Info: >>> Timestep 3 | Runtime 65.44 | Ass.time 64.19 | Run-Ass 1.249 | LinSolveTime 1.163 | Allocs 813212576
+```
+
 ## Recent changes
 Please look up the list of recent [changes](https://j-fu.github.io/VoronoiFVM.jl/stable/changes)
 

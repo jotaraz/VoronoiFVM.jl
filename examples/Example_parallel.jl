@@ -1,4 +1,9 @@
+module Example_parallel
 
+import Pkg
+Pkg.activate(".")
+
+using VoronoiFVM
 
 using ThreadPinning; pinthreads(:cores)
 
@@ -136,13 +141,6 @@ function full_rt2(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
 end	
 
 
-function benchmark_one(nm, nt, p; num=5, method_linear = KrylovJL_GMRES(), dpa=1, dt=0.01)
-	strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
-	#@info method_linear
-	full_rt2(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa)
-	
-end
-
 function validate(nm, nt, p; num=5, dt=.01, method_linear = KrylovJL_GMRES(), dpa=1, nt0=0, p0=1)
     strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
 	
@@ -153,13 +151,12 @@ function validate(nm, nt, p; num=5, dt=.01, method_linear = KrylovJL_GMRES(), dp
 
 end
 
-
-function loop_full_now(nm, nt, p; num=5, method_linear = KrylovJL_GMRES(), dpa=1)
+function benchmark_one(nm, nt, p; num=3, method_linear = KrylovJL_GMRES(), dpa=0, dt=0.01)
 	strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
 	#@info method_linear
-	full_rt2(nm, 0.01, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa)
-	
+	full_rt2(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa)	
 end
+
 
 function test(; tol=1e-8, nt=nothing, nm=(300,300), dt=.01, num=5, do_print_ts=true)
     if nt === nothing
@@ -180,4 +177,6 @@ function test(; tol=1e-8, nt=nothing, nm=(300,300), dt=.01, num=5, do_print_ts=t
     else
         @warn "Test not successful: $(round.(diffs,sigdigits=3)), where #threads = $nts, and preconditioners = ILUZero, ILUZero, ILUAM, PILUAM"
     end
+end
+
 end
