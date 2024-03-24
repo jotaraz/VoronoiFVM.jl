@@ -13,7 +13,7 @@ using LinearSolve
 using ExtendableSparse
 #using ProfileView
 using Base.Threads
-
+using SparseArrays
 
 BLAS.set_num_threads(nthreads())
 
@@ -36,9 +36,7 @@ function storage(f, u, node)
 	f[1] = u[1]
 end
 
-
-
-function full_rt2(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
+function solve_system(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
               method_linear = nothing, assembly = :cellwise,
               precon_linear = A -> VoronoiFVM.Identity(), do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true, num=5)
     
@@ -47,12 +45,12 @@ function full_rt2(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
 								   source = source, 
 								   storage = storage)
 	
-	if nt != 0
-		sys = VoronoiFVM.ParallelSystem(Float64, Float64, Int32, Int64, nm, nt, depth; species = [1])
+	if nt != 1
+		sys = VoronoiFVM.ParallelSystem(Float64, Float64, Int32, Int64, nm, nt, depth; species = [1], assembly, unknown_storage)
 		grid = sys.grid
     else
     	grid = VoronoiFVM.ExtendableSparse.getgrid(nm)
-		sys = VoronoiFVM.System(grid; species = [1])
+		sys = VoronoiFVM.System(grid; species = [1], assembly, unknown_storage)
 	end
     physics!(sys, physics)
     
@@ -73,19 +71,19 @@ function full_rt2(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
     empedparam = 0.0
     params = zeros(0)
     
-    if nt != 0
+    if nt != 1
 	    VoronoiFVM._complete_nomatrix!(sys; create_newtonvectors = true)
     else
         VoronoiFVM._complete!(sys; create_newtonvectors = true)
     end
     
     system = sys
-    called_from_API = false
-    nlhistory = NewtonSolverHistory()
+    #called_from_API = false
+    #nlhistory = NewtonSolverHistory()
     
     solution .= oldsol
-	residual = system.residual
-	update   = system.update
+	#residual = system.residual
+	#update   = system.update
 	VoronoiFVM._initialize!(solution, system; time, λ = empedparam, params)
     
     method_linear = system.matrixtype == :sparse ? control.method_linear : nothing;
@@ -108,7 +106,7 @@ function full_rt2(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
     oldsol .= 0.5
     solution = unknowns(sys)
 
-    if nt != 0
+    if nt != 1
         VoronoiFVM._complete_nomatrix!(sys; create_newtonvectors = true)
         
         for i=1:num
@@ -136,7 +134,7 @@ function full_rt2(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
         end
     end
 
-    return oldsol
+    return oldsol, sys.matrix
 
 end	
 
@@ -144,33 +142,50 @@ end
 function validate(nm, nt, p; num=5, dt=.01, method_linear = KrylovJL_GMRES(), dpa=1, nt0=0, p0=1)
     strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
 	
-    seq_res = full_rt2(nm, dt, nt0; method_linear, precon_linear=strats[p0], num, do_print_allocs=dpa)
-    par_res = full_rt2(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa)
+    seq_res = solve_system(nm, dt, nt0; method_linear, precon_linear=strats[p0], num, do_print_allocs=dpa)
+    par_res = solve_system(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa)
 
     maximum(abs.(seq_res-par_res))
 
 end
 
-function benchmark_one(nm, nt, p; num=3, method_linear = KrylovJL_GMRES(), dpa=0, dt=0.01)
-	strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
-	#@info method_linear
-	full_rt2(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa)	
+function benchmark_one(nm, nt, p; assembly=:edgewise, num=3, method_linear = KrylovJL_GMRES(), dpa=0, dt=0.01)
+    strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
+	solve_system(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa, assembly)	
 end
 
+function num_nodes(nm::Tuple)
+    l = length(nm)
+    x = nm[1]
+    for i=2:l
+        x *= nm[i]
+    end
+    x
+end
 
-function test(; tol=1e-8, nt=nothing, nm=(300,300), dt=.01, num=5, do_print_ts=true)
+function test(; tol=1e-8, nt=nothing, nm=(200,200), dt=.01, num=3, do_print_ts=true)
     if nt === nothing
         nt = nthreads()
     end
     method_linear = KrylovJL_GMRES()
     strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
-	
-    nts = [0, nt, nt, nt]
+	strat_names = ["ILUZero", "ILUAM", "PILUAM"]
+
+    nts = [1, nt, nt, nt]
     ps  = [1, 1, 2, 3]
     numcases = length(nts)
-    results = [full_rt2(nm, dt, nts[i]; method_linear, precon_linear=strats[ps[i]], num, do_print_allocs=0, do_print_ts) for i=1:numcases]
+    results = [Matrix{Float64}(undef, (1,num_nodes(nm))) for i=1:numcases*2]
+    for i=1:numcases
+        for (j,assembly) in enumerate([:cellwise, :edgewise])
+            if do_print_ts
+                @info "nt=$(nts[i]), precon="*strat_names[ps[i]]*", assembly=$assembly"
+            end
+            v, _ = solve_system(nm, dt, nts[i]; method_linear, precon_linear=strats[ps[i]], num, do_print_allocs=0, do_print_ts, assembly)
+            results[2*(i-1)+j] = v
+        end
+    end
 
-    diffs = [maximum(abs.(results[i]-results[i+1])) for i=1:numcases-1]
+    diffs = [maximum(abs.(results[i]-results[i+1])) for i=1:2*numcases-1]
     
     if maximum(diffs) < tol
         @warn "Test successful, all differences < $tol"

@@ -38,6 +38,7 @@ end
         error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
+        #matrix.cscmatrix[i,j] += fac*v
         ExtendableSparse.addtoentry!(matrix, i, j, v*fac)
     end
 end
@@ -58,6 +59,8 @@ end
         error("trying to assemble NaN, i:", i, ", j: ", j, "v: ", v, "fac: ", fac)
     end
     if v != zero(Tv)
+        #matrix.cscmatrix[i,j] += fac*v
+        #ExtendableSparse.addtoentry!(matrix, i, j, v*fac) #rawupdateindex!(matrix, +, v * fac, i, j, tid)
         ExtendableSparse.addtoentry!(matrix, i, j, tid, v*fac) #rawupdateindex!(matrix, +, v * fac, i, j, tid)
     end
 end
@@ -196,7 +199,7 @@ function eval_and_assemble(
 	if isnontrivial(outflow_evaluator)
     end
 
-
+    
     ncalloc += @allocated for item in edgebatch(system.assembly_data)
         for iedge in edgerange(system.assembly_data, item)
             _fill!(edge, system.assembly_data, iedge, item)
@@ -358,12 +361,11 @@ function eval_and_assemble(
 
         end
     end
-
+    
 	
 
     bnode = BNode(system, time, λ, params)
     bedge = BEdge(system, time, λ, params)
-
 
     boundary_factors::Array{Tv,2} = system.boundary_factors
     boundary_values::Array{Tv,2} = system.boundary_values
@@ -376,7 +378,6 @@ function eval_and_assemble(
     bflux_evaluator = ResJacEvaluator(physics, :bflux, UKL, bedge, nspecies)
 
 	
-
     nballoc = @allocated for item in nodebatch(system.boundary_assembly_data)
         for ibnode in noderange(system.boundary_assembly_data, item)
             _fill!(bnode, system.boundary_assembly_data, ibnode, item)
@@ -517,7 +518,7 @@ function eval_and_assemble(
             end
         end
     end
-
+    
 	#=
     noallocs(m::ExtendableSparseMatrix) = isnothing(m.lnkmatrix)
     noallocs(m::AbstractMatrix) = false
