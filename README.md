@@ -21,14 +21,16 @@ How to: Navigate to the "VoronoiFVM" directory (make sure that the parallel bran
 $ julia -t 8
 julia> include("examples/Example_parallel.jl")
 julia> using .Example_parallel
-julia> Example_parallel.benchmark_one((100,100,100), 0, 1); # solving a PDE system on a 100x100x100 grid with 1 thread and ILUZero.jl
-[ Info: >>> Timestep 1 | Runtime 84.05 | Ass.time 81.41 | Run-Ass 2.643 | LinSolveTime 2.447 | Allocs 2630868184
-[ Info: >>> Timestep 2 | Runtime 65.54 | Ass.time 64.18 | Run-Ass 1.356 | LinSolveTime 1.267 | Allocs 813212576
-[ Info: >>> Timestep 3 | Runtime 65.44 | Ass.time 64.19 | Run-Ass 1.249 | LinSolveTime 1.163 | Allocs 813212576
-julia> Example_parallel.benchmark_one((100,100,100), 8, 3); # solving a PDE system on a 100x100x100 grid with 8 threads and parallel ILU decomposition
-[ Info: >>> Timestep 1 | Runtime 37.47 | Ass.time 36.53 | Run-Ass 0.9342 | LinSolveTime 0.7191 | Allocs 1771317040
-[ Info: >>> Timestep 2 | Runtime 29.37 | Ass.time 28.75 | Run-Ass 0.617 | LinSolveTime 0.5072 | Allocs 1022194464
-[ Info: >>> Timestep 3 | Runtime 28.87 | Ass.time 28.25 | Run-Ass 0.6191 | LinSolveTime 0.511 | Allocs 1014160768
+julia> # solving a PDE system on a 120x120x120 grid with 1 thread and ILUZero.jl
+julia> Example_parallel.benchmark_one((120,120,120), 1, 1);
+[ Info: >>> Timestep 1 | Runtime 30.49 | Ass.time 25.24 | Run-Ass 5.254 | LinSolveTime 4.891 | Allocs 4079093536
+[ Info: >>> Timestep 2 | Runtime 22.1 | Ass.time 19.4 | Run-Ass 2.695 | LinSolveTime 2.513 | Allocs 1392405776
+[ Info: >>> Timestep 3 | Runtime 21.85 | Ass.time 19.38 | Run-Ass 2.477 | LinSolveTime 2.294 | Allocs 1392405440
+julia> # solving a PDE system on a 120x120x120 grid with 8 threads and parallel ILU decomposition
+julia> Example_parallel.benchmark_one((120,120,120), 8, 3);
+[ Info: >>> Timestep 1 | Runtime 10.55 | Ass.time 7.407 | Run-Ass 3.14 | LinSolveTime 2.603 | Allocs 3888187024
+[ Info: >>> Timestep 2 | Runtime 8.215 | Ass.time 6.363 | Run-Ass 1.852 | LinSolveTime 1.549 | Allocs 2167718928
+[ Info: >>> Timestep 3 | Runtime 6.624 | Ass.time 5.002 | Run-Ass 1.621 | LinSolveTime 1.349 | Allocs 1780484720
 ```
 
 ## Recent changes
