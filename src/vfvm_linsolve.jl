@@ -250,25 +250,22 @@ end
 
 canonical_matrix(A)=A
 canonical_matrix(A::ExtendableSparseMatrix)=SparseMatrixCSC(A)
-canonical_matrix(A::ExtendableSparseMatrixParallel)=A.cscmatrix
+
+canonical_precon_matrix(p, A) = canonical_matrix(A)
+canonical_precon_matrix(p, A::ExtendableSparseMatrixParallel) = A.cscmatrix
+canonical_precon_matrix(p::PILUAMPreconditioner, A::ExtendableSparseMatrixParallel) = A
+
+
+
+
 
 
 function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
     if isnothing(system.linear_cache)
         
-        if typeof(control.precon_linear) == PILUAMPreconditioner
-            Pl = control.precon_linear(A)
-        else
-            Pl = control.precon_linear(canonical_matrix(A))
-        end
+        Pl = control.precon_linear(canonical_precon_matrix(control.precon_linear, A))
         nlhistory.nlu += 1
-        if typeof(A) == ExtendableSparseMatrixParallel{Float64, Int64}
-            #@info "exciting"
-            p = LinearProblem(A, b)
-        else
-            #@info "boring"
-            p = LinearProblem(canonical_matrix(A), b)
-        end
+        p = LinearProblem(canonical_matrix(A), b)
         system.linear_cache = init(
             p,
             method_linear;
@@ -278,23 +275,11 @@ function _solve_linear!(u, system, nlhistory, control, method_linear, A, b)
             Pl,
         )
     else
-        #system.linear_cache.A=canonical_matrix(A)
-        if typeof(A) == ExtendableSparseMatrixParallel{Float64, Int64}
-            #@info "exciting2"
-            system.linear_cache.A=A
-        else
-            #@info "boring2"
-            system.linear_cache.A=canonical_matrix(A)
-        end
+        system.linear_cache.A=canonical_matrix(A)
         system.linear_cache.b=b
         if control.keepcurrent_linear
             nlhistory.nlu += 1
-            #system.linear_cache.Pl=control.precon_linear(canonical_matrix(A))
-            if typeof(control.precon_linear) == PILUAMPreconditioner
-                system.linear_cache.Pl = control.precon_linear(A)
-            else
-                system.linear_cache.Pl = control.precon_linear(canonical_matrix(A))
-            end
+            system.linear_cache.Pl = control.precon_linear(canonical_precon_matrix(control.precon_linear, A))
         end
     end
 
