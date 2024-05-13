@@ -30,6 +30,7 @@ Comment: `Example_parallel.benchmark_one(nm, nt, precon_id)` with `nm` = (nx, ny
 `precon_id` = 1 (ILUZero.jl), = 2 ([ILUAM](https://doi.org/10.1016/S0898-1221(03)00154-8)), = 3 (parallel [ILUAM](https://doi.org/10.1016/S0898-1221(03)00154-8)).\
 \
 
+### 3D Example
 Solving 3 timesteps of a PDE on a 35x35x35 grid on 4 threads using a parallel ILU preconditioner.
 """
 
@@ -51,6 +52,32 @@ Solving the same system using 1 thread and ILUZero.jl
 
 # ╔═╡ 3559fcb3-6e7a-4acd-af28-df180c5be251
 Example_parallel.benchmark_one((35,35,35), 1, 1);
+
+# ╔═╡ 0541f6c4-421f-4b17-8185-41633371e7e7
+md"""
+### 2D Example
+To see the advantage of parallel ILUAM more clearly: \
+A 500x500 grid, with 4 threads and parallel ILUAM:
+"""
+
+# ╔═╡ 6b883827-174d-41c9-923e-54109f61028e
+Example_parallel.benchmark_one((500,500), 4, 3);
+
+# ╔═╡ 2477ec26-ea3b-4947-a8b1-c5108051f357
+md"""
+Now with ILUzero.jl (and 4 threads):
+"""
+
+# ╔═╡ ce8c825f-d295-46a6-a058-231858659c85
+Example_parallel.benchmark_one((500,500), 4, 1);
+
+# ╔═╡ 65c94b1c-9639-4201-a05d-57fde08b7e5c
+md"""
+ILUzero.jl and 1 thread:
+"""
+
+# ╔═╡ cc671282-f8fd-437d-a5b4-ae9e2d3ca40b
+Example_parallel.benchmark_one((500,500), 1, 1);
 
 # ╔═╡ 25a8466a-1456-478e-9b79-56619d81cb0b
 md"""
@@ -189,6 +216,12 @@ The partitioning of the grid, using Metis.jl, and computations such as 'which th
 # ╠═c76d1397-c4d1-4c95-9f83-8e29e926f46c
 # ╟─e9d2afa4-8443-4b94-8be6-e7630d710beb
 # ╠═3559fcb3-6e7a-4acd-af28-df180c5be251
+# ╟─0541f6c4-421f-4b17-8185-41633371e7e7
+# ╠═6b883827-174d-41c9-923e-54109f61028e
+# ╟─2477ec26-ea3b-4947-a8b1-c5108051f357
+# ╠═ce8c825f-d295-46a6-a058-231858659c85
+# ╟─65c94b1c-9639-4201-a05d-57fde08b7e5c
+# ╠═cc671282-f8fd-437d-a5b4-ae9e2d3ca40b
 # ╠═25a8466a-1456-478e-9b79-56619d81cb0b
 # ╠═9e45b933-c5ff-4306-8c62-a377f101d7c1
 # ╟─ce96d29e-f9a9-4de1-ba46-fcc6fce567ad
