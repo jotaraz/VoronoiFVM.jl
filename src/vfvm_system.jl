@@ -270,6 +270,11 @@ function System(grid::ExtendableGrid;
     system.node_dof = spzeros(Ti, Tm, maxspec, num_nodes(grid))
     system.boundary_values = zeros(Tv, maxspec, num_bfaceregions(grid))
     system.boundary_factors = zeros(Tv, maxspec, num_bfaceregions(grid))
+    #system.region_species = spzeros(Ti, Int16, maxspec, Int(num_cellregions(grid)))
+    #system.bregion_species = spzeros(Ti, Int16, maxspec, Int(num_bfaceregions(grid)))
+    #system.node_dof = spzeros(Ti, Tm, maxspec, Int(num_nodes(grid)))
+    #system.boundary_values = zeros(Tv, maxspec, Int(num_bfaceregions(grid)))
+    #system.boundary_factors = zeros(Tv, maxspec, Int(num_bfaceregions(grid)))
     system.species_homogeneous = false
     system.assembly_type = assembly
     system.num_quantities = 0
@@ -315,8 +320,21 @@ function ParallelSystem(Tv, Tc, Ti, Tm, nm, nt, depth;
         throw("specify either unknown_storage=:dense  or unknown_storage=:sparse")
     end
     
-    grid, nnts, s, onr, cfp, gi, gc, ni, rni, starts, cellparts, depth = preparatory_multi_ps_less_reverse(nm, nt, depth, Tm; do_print=print_prep, check_partition, assembly)
-    
+    grid = getgrid(nm)
+    nc = num_cells(grid)
+    nn = num_nodes(grid)
+    if assembly == :cellwise
+        nnts, s, onr, cfp, gi, ni, rni, starts, cellparts, depth = preparatory_multi_ps_less_reverse(grid[CellNodes], nc, nn, nt, depth, Tm;
+                                                                                                     do_print=print_prep, check_partition, assembly)
+    else
+        if num_edges(grid) == 0
+            grid[EdgeNodes]
+        end
+        nnts, s, onr, cfp, gi, ni, rni, starts, cellparts, depth = preparatory_multi_ps_less_reverse(grid[CellNodes], nc, nn, nt, depth, Tm;
+                                                                                                     do_print=print_prep, check_partition, assembly, 
+                                                                                                     ne=num_edges(grid), ce=grid[CellEdges], mat_edge_node=grid[EdgeNodes])
+    end
+
     #system.matrix = ExtendableSparseParallel.ExtendableSparseMatrixParallel{Tv, Tm}(nm, nt, depth)
 
     maxspec = 0
@@ -1623,4 +1641,26 @@ Constructor for SparseSystem.
 """
 function SparseSystem(grid, physics::Physics; matrixindextype = Int64)
     System(grid, physics; matrixindextype = matrixindextype, unknown_storage = :sparse)
+end
+
+"""
+`function getgrid(nm)`
+
+Returns a simplexgrid with a given number of nodes in each dimension.
+`nm` is the number of nodes in each dimension (Examples: 2d: nm = (100,100) -> 100 x 100 grid, 3d: nm = (50,50,50) -> 50 x 50 x 50 grid).
+"""
+function getgrid(nm; x0=0.0, x1=1.0)
+	if length(nm) == 2
+		n,m = nm
+		xx = collect(LinRange(x0, x1, n))
+		yy = collect(LinRange(x0, x1, m))
+		grid = simplexgrid(xx, yy)
+	else 
+		n,m,l = nm
+		xx = collect(LinRange(x0, x1, n))
+		yy = collect(LinRange(x0, x1, m))
+		zz = collect(LinRange(x0, x1, l))
+		grid = simplexgrid(xx, yy, zz)
+	end
+	grid
 end

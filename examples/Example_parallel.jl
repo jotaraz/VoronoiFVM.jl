@@ -36,6 +36,13 @@ function storage(f, u, node)
 	f[1] = u[1]
 end
 
+"""
+`solve_system(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
+method_linear = nothing, assembly = :cellwise,
+precon_linear = A -> VoronoiFVM.Identity(), do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true, num=5)`
+
+Solves some PDE on an `nm` ((nx,ny) or (nx,ny,nz)) grid with `nt` threads and timestep `dt`.
+"""
 function solve_system(nm, dt, nt; depth=2, verbose=false, unknown_storage=:sparse,
               method_linear = nothing, assembly = :cellwise,
               precon_linear = A -> VoronoiFVM.Identity(), do_print_allocs=1, do_print_eaa=false, detail_allocs=false, do_print_ts=true, num=5)
@@ -49,7 +56,7 @@ function solve_system(nm, dt, nt; depth=2, verbose=false, unknown_storage=:spars
 		sys = VoronoiFVM.ParallelSystem(Float64, Float64, Int32, Int64, nm, nt, depth; species = [1], assembly, unknown_storage)
 		grid = sys.grid
     else
-    	grid = VoronoiFVM.ExtendableSparse.getgrid(nm)
+    	grid = VoronoiFVM.getgrid(nm)
 		sys = VoronoiFVM.System(grid; species = [1], assembly, unknown_storage)
 	end
     physics!(sys, physics)
@@ -149,6 +156,15 @@ function validate(nm, nt, p; num=5, dt=.01, method_linear = KrylovJL_GMRES(), dp
 
 end
 
+"""
+`function benchmark_one(nm, nt, p; assembly=:edgewise, num=3, method_linear = KrylovJL_GMRES(), dpa=0, dt=0.01)`
+
+Solve `num` timesteps of a PDE.
+`nm`  is the grid size (i.e. (nx,ny) or (nx,ny,nz)).
+`nt` is the number of threads, default is `nthreads()`.
+`p` chooses the precodintioner: = 1 (ILUZero.jl), = 2 ([ILUAM](https://doi.org/10.1016/S0898-1221(03)00154-8)), = 3 (parallel [ILUAM](https://doi.org/10.1016/S0898-1221(03)00154-8)).
+`assembly` defaults to `:edgewise`, can also be `:cellwise`.
+"""
 function benchmark_one(nm, nt, p; assembly=:edgewise, num=3, method_linear = KrylovJL_GMRES(), dpa=0, dt=0.01)
     strats = [VoronoiFVM.ILUZeroPreconditioner(), VoronoiFVM.ExtendableSparse.ILUAMPreconditioner(), VoronoiFVM.ExtendableSparse.PILUAMPreconditioner()]
 	solve_system(nm, dt, nt; method_linear, precon_linear=strats[p], num, do_print_allocs=dpa, assembly)	
@@ -163,6 +179,16 @@ function num_nodes(nm::Tuple)
     x
 end
 
+"""
+`test(; tol=1e-8, nt=nothing, nm=(200,200), dt=.01, num=3, do_print_ts=true)`
+
+Validate and benchmark parallel VoronoiFVM.
+Solves the same PDE and compares the solution vector for 1 and 4 threads, edge- and cellwise assembly and ILUZero.jl and parallel ILU.
+`tol` is the tolerance to decide whether the test was successful.
+`nm`  is the grid size (i.e. (nx,ny) or (nx,ny,nz)).
+`nt` is the number of threads, default is `nthreads()`.
+
+"""
 function test(; tol=1e-8, nt=nothing, nm=(200,200), dt=.01, num=3, do_print_ts=true)
     if nt === nothing
         nt = nthreads()
