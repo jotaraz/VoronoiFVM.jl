@@ -5,7 +5,7 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ b8205a3a-9563-4e20-89e0-c7736635985e
-import Pkg; Pkg.activate("/home/johannes/.julia/dev/VoronoiFVM"); Pkg.instantiate()
+import Pkg; Pkg.activate(".."); Pkg.instantiate()
 
 # ╔═╡ ee017e27-866b-436c-88f2-5ff9ffd7c315
 begin
@@ -17,7 +17,7 @@ begin
 end
 
 # ╔═╡ a4ba1fea-56dd-4204-b392-bd45b81bdf55
-include("/home/johannes/.julia/dev/VoronoiFVM/examples/Example_parallel.jl"); using .Example_parallel
+include("../examples/Example_parallel.jl"); using .Example_parallel
 
 # ╔═╡ ffb99281-e637-40f1-a4cb-6c0ccab720ff
 md"""
@@ -85,7 +85,7 @@ Insertion of new entries is very fast for the LNK matrix, but the usage of the m
 
 Often, you want to change the values of the non-zero entries of the matrix later (e.g. when solving a non-linear PDE), but you do not want to change where the non-zero entries are. This can be done quickly by changing the non-zero values of the CSC matrix.
 
-New values can be inserted using the LNK matrix and then flushing again.
+New values can be inserted using a new LNK matrix and then flushing again / adding.
 
 ### Can we just compute the matrix entries in parallel?
 
@@ -129,10 +129,10 @@ Then assign a thread to each region.
 The grid is partitioned in a way such that each node is accessed by only one thread (and maybe the separator).
 Thus, we can pre-compute the list of nodes associated with a thread, the $i$-th thread has `nnts[i]` nodes.
 We create the LNK matrices of the individual threads before the calculations happen.
-The $i$-th LNK matrix has `#nodes` rows and `nnts[i]` columns.
+The $i$-th LNK matrix has `#nodes in the grid` rows and `nnts[i]` columns.
 
 Then, in the loop each thread iterates over its cells and writes the computed numbers in it's own LNK matrix.
-Then thread 1 also computes the separator cells and writes the results in its own LNK matrix.
+Then thread 1 also computes the separator cells and writes the results in its LNK matrix.
 
 Then the $n$ LNK matrices are jointly converted into one CSC matrix (this is called `flush`). The flushing is described in more detail below.
 
@@ -161,7 +161,7 @@ The code is in `src/matrix/ExtendableSparseParallel/struct_flush.jl`.
 
 ### 'dense'
 
-Since we have a rigid node (i.e. column) to thread(s) map, we now which LNK matrices can contain non-zeros entries for a specific column.
+Since we have a rigid node (i.e. column) to thread(s) mapping, we know which LNK matrices can contain non-zeros entries for a specific column.
 We iterate over all columns, and for each column, we check if the possible LNK matrices have non-zero entries, if yes, their entries are correctly inserted into the arrays that form the CSC matrix (`colptr`, `rowval`, `nzval`).
 
 ### 'sparse'
@@ -172,7 +172,7 @@ Here, we really make use of the SuperSparseMatrixLNK structure.
 
 ## preparatory
 
-The partitioning of the grid, using Metis.jl and computations such as 'which thread accesses which node?' and 'which cells are accessed by thred $i$?' are done in `src/matrix/ExtendableSparseParallel/preparatory.jl`.
+The partitioning of the grid, using Metis.jl, and computations such as 'which thread accesses which node?' and 'which cells are accessed by thred $i$?' are done in `src/matrix/ExtendableSparseParallel/preparatory.jl`.
 
 """
 
@@ -183,7 +183,7 @@ The partitioning of the grid, using Metis.jl and computations such as 'which thr
 # ╠═b8205a3a-9563-4e20-89e0-c7736635985e
 # ╠═ee017e27-866b-436c-88f2-5ff9ffd7c315
 # ╠═a4ba1fea-56dd-4204-b392-bd45b81bdf55
-# ╠═ffb99281-e637-40f1-a4cb-6c0ccab720ff
+# ╟─ffb99281-e637-40f1-a4cb-6c0ccab720ff
 # ╠═df2373e5-a7df-42e8-835f-383e151c6d12
 # ╟─b4d144d0-ec4f-4c44-8785-183b9df7cf37
 # ╠═c76d1397-c4d1-4c95-9f83-8e29e926f46c
