@@ -171,7 +171,7 @@ When using the same access pattern (each thread works on its region, and then th
 ## SuperSparseMatrixLNK
 
 Actually, ESMP does not have matrices of type SparseMatrixLNK as LNK, but matrices of type SuperSparseMatrixLNK. SuperSparse means 'even more sparse'.
-Sepcifically we want to be able to efficiently access the entries even if some columns are entry. 
+Specifically we want to be able to efficiently access the entries even if some columns are entry. 
 To this end, each SuperSparseMatrixLNK has an array 'collnk', such that 'collnk[i] = j' if $j$ is the $i$-th non-zero column of the matrix.
 
 
